@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ノート見本作成ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 教科書体に近いフォントの指定 */
+        :root {
+            --font-kyokasho: "UD Digi Kyokasho N-R", "UD Digi Kyokasho N-B", "Klee One", "BIZ UDPMincho", "Yu Mincho", serif;
+        }
+
+        body {
+            font-family: sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* A4用紙のスタイル */
+        .a4-paper {
+            width: 210mm;
+            height: 297mm;
+            background-color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin: 0 auto;
+            position: relative;
+            /* 小学校のノートを想定した余白 */
+            padding: 25mm 20mm; 
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* 縦書き・横書きの制御 */
+        .notebook-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-content: flex-start;
+            font-family: var(--font-kyokasho);
+        }
+
+        /* 横書き：行は上から下へ */
+        .dir-horizontal {
+            flex-direction: column;
+            writing-mode: horizontal-tb;
+        }
+
+        /* 縦書き：列（行）は右から左へ */
+        .dir-vertical {
+            flex-direction: column;
+            writing-mode: vertical-rl;
+        }
+
+        /* 行（または列）のスタイル */
+        .notebook-row {
+            display: flex;
+            flex: 1;
+        }
+
+        /* 横書き時のマス：左から右へ */
+        .dir-horizontal .notebook-row {
+            flex-direction: row;
+        }
+
+        /* 縦書き時のマス：上から下へ */
+        .dir-vertical .notebook-row {
+            flex-direction: row;
+        }
+
+        /* マス目のスタイル */
+        .cell {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            box-sizing: border-box;
+            line-height: 1;
+        }
+
+        /* 枠線あり */
+        .style-grid .cell {
+            border: 1px solid #16a34a; /* 緑色の罫線 */
+        }
+        
+        .style-grid-gray .cell {
+            border: 1px solid #9ca3af; /* グレーの罫線 */
+        }
+
+        /* 十字リーダーあり（緑） */
+        .style-leader .cell {
+            border: 1px solid #16a34a;
+        }
+        .style-leader .cell::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            border-top: 1px dashed #86efac;
+            z-index: 0;
+        }
+        .style-leader .cell::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            border-left: 1px dashed #86efac;
+            z-index: 0;
+        }
+
+        /* 十字リーダーあり（グレー） */
+        .style-leader-gray .cell {
+            border: 1px solid #9ca3af;
+        }
+        .style-leader-gray .cell::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            border-top: 1px dashed #d1d5db;
+            z-index: 0;
+        }
+        .style-leader-gray .cell::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            border-left: 1px dashed #d1d5db;
+            z-index: 0;
+        }
+
+        .cell-content {
+            z-index: 10;
+            text-combine-upright: none;
+        }
+
+        /* 印刷時の設定 */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            body {
+                background-color: white;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-area {
+                width: 100%;
+                height: 100%;
+                padding: 0;
+                overflow: visible;
+                display: block;
+            }
+            .a4-paper {
+                box-shadow: none;
+                margin: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <!-- コントロールパネル -->
+    <div class="w-80 bg-white border-r border-gray-200 p-6 flex flex-col h-full overflow-y-auto no-print z-10 shadow-lg">
+        <h1 class="text-xl font-bold mb-6 text-gray-800">ノート見本作成ツール</h1>
+
+        <!-- テキスト入力 -->
+        <div class="mb-5">
+            <label class="block text-sm font-medium text-gray-700 mb-1">見本テキスト</label>
+            <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
+かきくけこ
+
+さしすせそ</textarea>
+            <p class="text-xs text-gray-500 mt-1">※改行すると次の行に移動します。</p>
+        </div>
+
+        <!-- 書字方向 -->
+        <div class="mb-5">
+            <label class="block text-sm font-medium text-gray-700 mb-1">文字の向き</label>
+            <div class="flex flex-col space-y-2">
+                <label class="inline-flex items-center">
+                    <input type="radio" name="direction" value="vertical" class="form-radio text-blue-600" checked>
+                    <span class="ml-2 text-sm">縦書き（右上からスタート）</span>
+                </label>
+                <label class="inline-flex items-center">
+                    <input type="radio" name="direction" value="horizontal" class="form-radio text-blue-600">
+                    <span class="ml-2 text-sm">横書き（左上からスタート）</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ノートの規格設定 -->
+        <div class="mb-5 border-t border-gray-200 pt-4">
+            <h2 class="text-sm font-bold text-gray-700 mb-2">ノートの規格</h2>
+            <div class="flex space-x-4">
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-600 mb-1">1行のマス数</label>
+                    <input type="number" id="colsCount" value="10" min="5" max="30" class="w-full border border-gray-300 rounded-md p-2 text-sm">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-600 mb-1">行数</label>
+                    <input type="number" id="rowsCount" value="7" min="3" max="25" class="w-full border border-gray-300 rounded-md p-2 text-sm">
+                </div>
+            </div>
+        </div>
+
+        <!-- マス目のスタイル -->
+        <div class="mb-5">
+            <label class="block text-sm font-medium text-gray-700 mb-1">マス目の種類</label>
+            <select id="gridStyle" class="w-full border border-gray-300 rounded-md p-2 text-sm">
+                <option value="style-leader">十字リーダーあり（緑）</option>
+                <option value="style-grid">マス目のみ（緑）</option>
+                <option value="style-leader-gray">十字リーダーあり（グレー）</option>
+                <option value="style-grid-gray">マス目のみ（グレー）</option>
+                <option value="style-none">枠線なし（白紙）</option>
+            </select>
+        </div>
+
+        <!-- フォントサイズ調整 -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                文字の大きさ: <span id="fontSizeDisplay">80</span>%
+            </label>
+            <input type="range" id="fontSizeRatio" min="30" max="100" value="80" class="w-full">
+            <p class="text-xs text-gray-500 mt-1">※マスに対する大きさの割合です。</p>
+        </div>
+
+        <div class="mt-auto pt-4 border-t border-gray-200">
+            <button onclick="window.print()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                A4サイズで印刷
+            </button>
+        </div>
+    </div>
+
+    <!-- プレビューエリア -->
+    <div class="flex-1 overflow-auto bg-gray-500 print-area flex justify-center py-8">
+        <div id="scaleWrapper" style="transform-origin: top center;">
+            <div id="paper" class="a4-paper">
+                <div id="notebook" class="notebook-container dir-vertical style-leader">
+                    <!-- JSでここにマス目が生成されます -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const elements = {
+            input: document.getElementById('inputText'),
+            direction: document.getElementsByName('direction'),
+            cols: document.getElementById('colsCount'),
+            rows: document.getElementById('rowsCount'),
+            style: document.getElementById('gridStyle'),
+            fontSizeRatio: document.getElementById('fontSizeRatio'),
+            fontSizeDisplay: document.getElementById('fontSizeDisplay'),
+            notebook: document.getElementById('notebook'),
+            scaleWrapper: document.getElementById('scaleWrapper')
+        };
+
+        function renderNotebook() {
+            const text = elements.input.value;
+            const direction = Array.from(elements.direction).find(radio => radio.checked).value;
+            const colsCount = parseInt(elements.cols.value) || 10;
+            const rowsCount = parseInt(elements.rows.value) || 7;
+            const style = elements.style.value;
+            const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
+
+            elements.notebook.className = `notebook-container dir-${direction} ${style}`;
+            elements.notebook.innerHTML = '';
+
+            // 方向に関わらず、行数と1行のマス数をそのまま適用
+            const maxLines = rowsCount;
+            const cellsPerLine = colsCount;
+
+            // テキストのパースとマス割り当てロジック
+            const lines = text.split('\n');
+            const gridData = [];
+
+            for (const line of lines) {
+                let currentLineChars = [];
+                // 1文字ずつ処理（サロゲートペア等厳密にやる場合は Array.from(line) を使用）
+                const chars = Array.from(line);
+                
+                for (const char of chars) {
+                    currentLineChars.push(char);
+                    // 1行のマス数に達したら、次の行へ折り返し
+                    if (currentLineChars.length === cellsPerLine) {
+                        gridData.push(currentLineChars);
+                        currentLineChars = [];
+                    }
+                }
+                
+                // 改行された場合、または文字数が中途半端に余っている場合、残りのマスを空欄で埋める
+                // (空行の場合は chars.length === 0 だが、空の1行として追加する)
+                if (currentLineChars.length > 0 || chars.length === 0) {
+                    while (currentLineChars.length < cellsPerLine) {
+                        currentLineChars.push('');
+                    }
+                    gridData.push(currentLineChars);
+                }
+            }
+
+            // 指定された最大行数(maxLines)に合わせて調整
+            while (gridData.length < maxLines) {
+                gridData.push(Array(cellsPerLine).fill('')); // 足りない行は空行を追加
+            }
+            const finalGridData = gridData.slice(0, maxLines); // 超過した行は切り捨て
+
+            // DOMの生成
+            for (let i = 0; i < maxLines; i++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'notebook-row';
+
+                const lineData = finalGridData[i];
+
+                for (let j = 0; j < cellsPerLine; j++) {
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = 'cell';
+
+                    const char = lineData[j];
+                    if (char && char !== '') {
+                        const span = document.createElement('span');
+                        span.className = 'cell-content';
+                        span.textContent = char;
+                        cellDiv.appendChild(span);
+                    }
+                    rowDiv.appendChild(cellDiv);
+                }
+                elements.notebook.appendChild(rowDiv);
+            }
+
+            // フォントサイズの計算（レンダリング後）
+            setTimeout(() => {
+                const firstCell = elements.notebook.querySelector('.cell');
+                if (firstCell) {
+                    const minDimension = Math.min(firstCell.offsetWidth, firstCell.offsetHeight);
+                    const calculatedFontSize = minDimension * fontRatio;
+                    elements.notebook.style.fontSize = `${calculatedFontSize}px`;
+                }
+            }, 10);
+        }
+
+        function adjustScale() {
+            if (window.matchMedia('print').matches) {
+                elements.scaleWrapper.style.transform = 'scale(1)';
+                return;
+            }
+            const wrapperWidth = elements.scaleWrapper.parentElement.clientWidth;
+            const paperWidth = 210 * 3.78; // A4幅概算
+            if (wrapperWidth < paperWidth + 40) {
+                const scale = (wrapperWidth - 40) / paperWidth;
+                elements.scaleWrapper.style.transform = `scale(${scale})`;
+            } else {
+                elements.scaleWrapper.style.transform = 'scale(1)';
+            }
+        }
+
+        // イベントリスナー
+        elements.input.addEventListener('input', renderNotebook);
+        elements.cols.addEventListener('input', renderNotebook);
+        elements.rows.addEventListener('input', renderNotebook);
+        elements.style.addEventListener('change', renderNotebook);
+        elements.direction.forEach(radio => radio.addEventListener('change', renderNotebook));
+        
+        elements.fontSizeRatio.addEventListener('input', (e) => {
+            elements.fontSizeDisplay.textContent = e.target.value;
+            renderNotebook();
+        });
+
+        window.addEventListener('resize', () => {
+            adjustScale();
+            renderNotebook();
+        });
+
+        // 初期化
+        adjustScale();
+        renderNotebook();
+    </script>
+</body>
+</html>
