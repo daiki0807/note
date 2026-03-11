@@ -22,7 +22,7 @@
             height: 297mm;
             background-color: white;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            margin: 0 auto;
+            margin: 0 auto 2rem auto;
             position: relative;
             /* 小学校のノートを想定した余白 */
             padding: 25mm 20mm; 
@@ -154,6 +154,12 @@
                 margin: 0;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                page-break-after: always;
+                break-after: page;
+            }
+            .a4-paper:last-child {
+                page-break-after: auto;
+                break-after: auto;
             }
         }
     </style>
@@ -237,12 +243,8 @@
 
     <!-- プレビューエリア -->
     <div class="flex-1 overflow-auto bg-gray-500 print-area flex justify-center py-8">
-        <div id="scaleWrapper" style="transform-origin: top center;">
-            <div id="paper" class="a4-paper">
-                <div id="notebook" class="notebook-container dir-vertical style-leader">
-                    <!-- JSでここにマス目が生成されます -->
-                </div>
-            </div>
+        <div id="scaleWrapper" style="transform-origin: top center; display: flex; flex-direction: column;">
+            <!-- JSでここにa4-paper（複数）が生成されます -->
         </div>
     </div>
 
@@ -255,7 +257,6 @@
             style: document.getElementById('gridStyle'),
             fontSizeRatio: document.getElementById('fontSizeRatio'),
             fontSizeDisplay: document.getElementById('fontSizeDisplay'),
-            notebook: document.getElementById('notebook'),
             scaleWrapper: document.getElementById('scaleWrapper')
         };
 
@@ -267,10 +268,8 @@
             const style = elements.style.value;
             const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
 
-            elements.notebook.className = `notebook-container dir-${direction} ${style}`;
-            elements.notebook.innerHTML = '';
+            elements.scaleWrapper.innerHTML = ''; // クリアする
 
-            // 方向に関わらず、行数と1行のマス数をそのまま適用
             const maxLines = rowsCount;
             const cellsPerLine = colsCount;
 
@@ -280,10 +279,20 @@
 
             for (const line of lines) {
                 let currentLineChars = [];
-                // 1文字ずつ処理（サロゲートペア等厳密にやる場合は Array.from(line) を使用）
                 const chars = Array.from(line);
+                const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
                 
-                for (const char of chars) {
+                for (let c = 0; c < chars.length; c++) {
+                    const char = chars[c];
+
+                    // 禁則処理: 行頭に来てはいけない文字が行頭になる場合、前の行の最後の文字にくっつける
+                    if (currentLineChars.length === 0 && gridData.length > 0 && kinsokuChars.includes(char)) {
+                        const previousLine = gridData[gridData.length - 1];
+                        // 前の行の最後の文字に追加する
+                        previousLine[previousLine.length - 1] += char;
+                        continue;
+                    }
+
                     currentLineChars.push(char);
                     // 1行のマス数に達したら、次の行へ折り返し
                     if (currentLineChars.length === cellsPerLine) {
@@ -293,7 +302,6 @@
                 }
                 
                 // 改行された場合、または文字数が中途半端に余っている場合、残りのマスを空欄で埋める
-                // (空行の場合は chars.length === 0 だが、空の1行として追加する)
                 if (currentLineChars.length > 0 || chars.length === 0) {
                     while (currentLineChars.length < cellsPerLine) {
                         currentLineChars.push('');
@@ -302,42 +310,66 @@
                 }
             }
 
-            // 指定された最大行数(maxLines)に合わせて調整
-            while (gridData.length < maxLines) {
-                gridData.push(Array(cellsPerLine).fill('')); // 足りない行は空行を追加
+            // 何ページ分必要か計算
+            if (gridData.length === 0) {
+                gridData.push(Array(cellsPerLine).fill('')); // 最低1行
             }
-            const finalGridData = gridData.slice(0, maxLines); // 超過した行は切り捨て
+            const totalPages = Math.ceil(gridData.length / maxLines) || 1;
 
-            // DOMの生成
-            for (let i = 0; i < maxLines; i++) {
-                const rowDiv = document.createElement('div');
-                rowDiv.className = 'notebook-row';
-
-                const lineData = finalGridData[i];
-
-                for (let j = 0; j < cellsPerLine; j++) {
-                    const cellDiv = document.createElement('div');
-                    cellDiv.className = 'cell';
-
-                    const char = lineData[j];
-                    if (char && char !== '') {
-                        const span = document.createElement('span');
-                        span.className = 'cell-content';
-                        span.textContent = char;
-                        cellDiv.appendChild(span);
-                    }
-                    rowDiv.appendChild(cellDiv);
+            // 各ページを生成して追加
+            for (let p = 0; p < totalPages; p++) {
+                const pageData = gridData.slice(p * maxLines, (p + 1) * maxLines);
+                
+                // 最終ページなど、指定行数に満たない場合は空行を追加して埋める
+                while (pageData.length < maxLines) {
+                    pageData.push(Array(cellsPerLine).fill(''));
                 }
-                elements.notebook.appendChild(rowDiv);
+
+                // paper要素
+                const paperDiv = document.createElement('div');
+                paperDiv.className = 'a4-paper';
+
+                // notebook要素
+                const notebookDiv = document.createElement('div');
+                notebookDiv.className = `notebook-container dir-${direction} ${style}`;
+                
+                // 行・マスの生成
+                for (let i = 0; i < maxLines; i++) {
+                    const rowDiv = document.createElement('div');
+                    rowDiv.className = 'notebook-row';
+                    const lineData = pageData[i];
+
+                    for (let j = 0; j < cellsPerLine; j++) {
+                        const cellDiv = document.createElement('div');
+                        cellDiv.className = 'cell';
+                        const char = lineData[j];
+
+                        if (char && char !== '') {
+                            const span = document.createElement('span');
+                            span.className = 'cell-content';
+                            span.textContent = char;
+                            cellDiv.appendChild(span);
+                        }
+                        rowDiv.appendChild(cellDiv);
+                    }
+                    notebookDiv.appendChild(rowDiv);
+                }
+                
+                paperDiv.appendChild(notebookDiv);
+                elements.scaleWrapper.appendChild(paperDiv);
             }
 
             // フォントサイズの計算（レンダリング後）
             setTimeout(() => {
-                const firstCell = elements.notebook.querySelector('.cell');
+                const firstCell = elements.scaleWrapper.querySelector('.cell');
                 if (firstCell) {
                     const minDimension = Math.min(firstCell.offsetWidth, firstCell.offsetHeight);
                     const calculatedFontSize = minDimension * fontRatio;
-                    elements.notebook.style.fontSize = `${calculatedFontSize}px`;
+                    // 全ページのnotebookコンテナにフォントサイズを反映
+                    const notebooks = elements.scaleWrapper.querySelectorAll('.notebook-container');
+                    notebooks.forEach(nb => {
+                        nb.style.fontSize = `${calculatedFontSize}px`;
+                    });
                 }
             }, 10);
         }
