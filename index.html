@@ -124,6 +124,15 @@
                 break-after: auto;
             }
         }
+
+        /* 句読点を右上に配置 */
+        .cell-content.punctuation {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            left: auto;
+            bottom: auto;
+        }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden">
@@ -335,12 +344,18 @@
             }
         }
 
+        const PUNCTUATION_CHARS = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
+
         function createCell(char) {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
             if (char && char !== '') {
                 const span = document.createElement('span');
                 span.className = 'cell-content';
+                // 1文字だけの句読点は右上に配置
+                if (char.length === 1 && PUNCTUATION_CHARS.includes(char)) {
+                    span.classList.add('punctuation');
+                }
                 span.textContent = char;
                 cellDiv.appendChild(span);
             }
