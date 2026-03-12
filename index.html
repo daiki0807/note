@@ -232,17 +232,11 @@
             const AVAIL_W_MM = 170;
             const AVAIL_H_MM = 257;
 
-            // グリッドの列数・行数を計算（A4縦向きに収まるように）
-            // 横書き: gridCols=cellsPerLine（横方向）, gridRows=maxLines（縦方向）
-            // 縦書き: gridCols=maxLines（横方向＝行数）, gridRows=cellsPerLine（縦方向＝1行のマス数）
-            let gridCols, gridRows;
-            if (direction === 'horizontal') {
-                gridCols = cellsPerLine;
-                gridRows = maxLines;
-            } else {
-                gridCols = maxLines;
-                gridRows = cellsPerLine;
-            }
+            // グリッドレイアウトは常に同じ（横書きと同じ配置）
+            // 横書き・縦書きどちらでも: gridCols=cellsPerLine（横方向）, gridRows=maxLines（縦方向）
+            // 文字の入力方向だけが変わる
+            const gridCols = cellsPerLine;
+            const gridRows = maxLines;
 
             // 正方形のセルサイズを計算（mm単位、A4に収まる最大サイズ）
             // 小数点以下1桁に丸めてわずかなバッファを確保
@@ -315,20 +309,19 @@
                         }
                     }
                 } else {
-                    // 縦書き: CSS Gridで gridRows x gridCols のグリッドを作成
+                    // 縦書き: グリッドのレイアウトは横書きと同じ（cellsPerLine列 × maxLines行）
                     // 文字の流れ: 右上→下→次の列（左方向）
-                    // gridの並び順: 行優先（左→右、上→下）なので、
-                    // grid位置を明示的に指定する
-                    //
-                    // lineIndex(=行、右→左の列) → grid-column = maxLines - lineIndex
-                    // charIndex(=マス、上→下)   → grid-row = charIndex + 1
+                    // lineIndex(=テキスト行) → 右から左の列へ: grid-column = cellsPerLine - lineIndex
+                    //   ※各行のデータはcellsPerLine個あるが、縦書きでは各行の文字を「1列」として配置
+                    // charIndex(=行内の文字位置) → grid-row = charIndex + 1
+                    //   ※ただしmaxLines行しかないので、charIndexはmaxLinesまで
                     for (let lineIndex = 0; lineIndex < maxLines; lineIndex++) {
                         const lineData = pageData[lineIndex];
                         for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
                             const cellDiv = createCell(lineData[charIndex]);
-                            // 右から左へ列を配置
-                            cellDiv.style.gridColumn = maxLines - lineIndex;
-                            cellDiv.style.gridRow = charIndex + 1;
+                            // 右から左へ列を配置、上から下へ行を配置
+                            cellDiv.style.gridColumn = cellsPerLine - charIndex;
+                            cellDiv.style.gridRow = lineIndex + 1;
                             gridDiv.appendChild(cellDiv);
                         }
                     }
