@@ -395,7 +395,18 @@
         elements.cols.addEventListener('input', renderNotebook);
         elements.rows.addEventListener('input', renderNotebook);
         elements.style.addEventListener('change', renderNotebook);
-        elements.direction.forEach(radio => radio.addEventListener('change', renderNotebook));
+        let currentDirection = Array.from(elements.direction).find(radio => radio.checked).value;
+        elements.direction.forEach(radio => radio.addEventListener('change', (e) => {
+            if (e.target.checked && e.target.value !== currentDirection) {
+                // 方向が変わったときに、レイアウト形状（縦向き/横向き）と余白を維持するため、
+                // 「1行のマス数」と「行数」の数値を入れ替える
+                const temp = elements.cols.value;
+                elements.cols.value = elements.rows.value;
+                elements.rows.value = temp;
+                currentDirection = e.target.value;
+            }
+            renderNotebook();
+        }));
         
         elements.fontSizeRatio.addEventListener('input', (e) => {
             elements.fontSizeDisplay.textContent = e.target.value;
