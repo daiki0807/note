@@ -22,7 +22,7 @@
             box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
             margin: 0 auto 2rem auto;
             position: relative;
-            padding: 15mm;
+            padding: 20mm;
             box-sizing: border-box;
             overflow: hidden;
             display: flex;
@@ -213,13 +213,6 @@
             scaleWrapper: document.getElementById('scaleWrapper')
         };
 
-        // A4用紙の内部利用可能サイズ（padding: 15mm を引いた値）
-        // A4: 210mm x 297mm, padding各辺15mm → 利用可能: 180mm x 267mm
-        // 1mm ≈ 3.7795px
-        const MM_TO_PX = 3.7795;
-        const AVAILABLE_W = 180 * MM_TO_PX; // ≈ 680px
-        const AVAILABLE_H = 267 * MM_TO_PX; // ≈ 1009px
-
         function renderNotebook() {
             const text = elements.input.value;
             const direction = Array.from(elements.direction).find(radio => radio.checked).value;
@@ -233,9 +226,14 @@
             const cellsPerLine = colsCount;
             const maxLines = rowsCount;
 
+            // A4用紙の利用可能サイズ（mm単位で直接計算、ピクセル変換なし）
+            // A4: 210mm x 297mm, padding各辺20mm → 利用可能: 170mm x 257mm
+            const AVAIL_W_MM = 170;
+            const AVAIL_H_MM = 257;
+
             // グリッドの列数・行数を計算（A4縦向きに収まるように）
-            // 横書き: gridCols=cellsPerLine, gridRows=maxLines
-            // 縦書き: gridCols=maxLines（列は右→左）, gridRows=cellsPerLine（上→下）
+            // 横書き: gridCols=cellsPerLine（横方向）, gridRows=maxLines（縦方向）
+            // 縦書き: gridCols=maxLines（横方向＝行数）, gridRows=cellsPerLine（縦方向＝1行のマス数）
             let gridCols, gridRows;
             if (direction === 'horizontal') {
                 gridCols = cellsPerLine;
@@ -245,9 +243,11 @@
                 gridRows = cellsPerLine;
             }
 
-            // 正方形のセルサイズを計算（A4に収まる最大サイズ）
-            const cellSize = Math.floor(Math.min(AVAILABLE_W / gridCols, AVAILABLE_H / gridRows));
-            const fontSize = cellSize * fontRatio;
+            // 正方形のセルサイズを計算（mm単位、A4に収まる最大サイズ）
+            // 小数点以下1桁に丸めてわずかなバッファを確保
+            const cellSizeMM = Math.floor(Math.min(AVAIL_W_MM / gridCols, AVAIL_H_MM / gridRows) * 10) / 10;
+            const cellSizePx = cellSizeMM * 3.7795; // フォントサイズ計算用
+            const fontSize = cellSizePx * fontRatio;
 
             // テキストのパースとマス割り当てロジック
             const lines = text.split('\n');
@@ -300,8 +300,8 @@
 
                 const gridDiv = document.createElement('div');
                 gridDiv.className = `notebook-grid ${style}`;
-                gridDiv.style.gridTemplateColumns = `repeat(${gridCols}, ${cellSize}px)`;
-                gridDiv.style.gridTemplateRows = `repeat(${gridRows}, ${cellSize}px)`;
+                gridDiv.style.gridTemplateColumns = `repeat(${gridCols}, ${cellSizeMM}mm)`;
+                gridDiv.style.gridTemplateRows = `repeat(${gridRows}, ${cellSizeMM}mm)`;
                 gridDiv.style.fontSize = `${fontSize}px`;
 
                 if (direction === 'horizontal') {
