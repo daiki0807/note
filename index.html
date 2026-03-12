@@ -6,7 +6,6 @@
     <title>ノート見本作成ツール</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 教科書体に近いフォントの指定 */
         :root {
             --font-kyokasho: "UD Digi Kyokasho N-R", "UD Digi Kyokasho N-B", "Klee One", "BIZ UDPMincho", "Yu Mincho", serif;
         }
@@ -16,61 +15,27 @@
             background-color: #f3f4f6;
         }
 
-        /* A4用紙のスタイル */
         .a4-paper {
             width: 210mm;
             height: 297mm;
             background-color: white;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
             margin: 0 auto 2rem auto;
             position: relative;
-            /* 小学校のノートを想定した余白 */
-            padding: 25mm 20mm; 
+            padding: 15mm;
             box-sizing: border-box;
             overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        /* 縦書き・横書きの制御 */
-        .notebook-container {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-content: center;
-            justify-content: center;
+        .notebook-grid {
+            display: grid;
             font-family: var(--font-kyokasho);
         }
 
-        /* 横書き：行は上から下へ */
-        .dir-horizontal {
-            flex-direction: column;
-            writing-mode: horizontal-tb;
-        }
-
-        /* 縦書き：列（行）は右から左へ */
-        .dir-vertical {
-            flex-direction: column;
-            writing-mode: vertical-rl;
-        }
-
-        /* 行（または列）のスタイル */
-        .notebook-row {
-            display: flex;
-        }
-
-        /* 横書き時のマス：左から右へ */
-        .dir-horizontal .notebook-row {
-            flex-direction: row;
-        }
-
-        /* 縦書き時のマス：上から下へ */
-        .dir-vertical .notebook-row {
-            flex-direction: row;
-        }
-
-        /* マス目のスタイル */
         .cell {
-            flex: 1;
-            aspect-ratio: 1 / 1;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -79,16 +44,14 @@
             line-height: 1;
         }
 
-        /* 枠線あり */
         .style-grid .cell {
-            border: 1px solid #16a34a; /* 緑色の罫線 */
-        }
-        
-        .style-grid-gray .cell {
-            border: 1px solid #9ca3af; /* グレーの罫線 */
+            border: 1px solid #16a34a;
         }
 
-        /* 十字リーダーあり（緑） */
+        .style-grid-gray .cell {
+            border: 1px solid #9ca3af;
+        }
+
         .style-leader .cell {
             border: 1px solid #16a34a;
         }
@@ -107,7 +70,6 @@
             z-index: 0;
         }
 
-        /* 十字リーダーあり（グレー） */
         .style-leader-gray .cell {
             border: 1px solid #9ca3af;
         }
@@ -128,10 +90,8 @@
 
         .cell-content {
             z-index: 10;
-            text-combine-upright: none;
         }
 
-        /* 印刷時の設定 */
         @media print {
             @page {
                 size: A4 portrait;
@@ -167,11 +127,9 @@
 </head>
 <body class="flex h-screen overflow-hidden">
 
-    <!-- コントロールパネル -->
     <div class="w-80 bg-white border-r border-gray-200 p-6 flex flex-col h-full overflow-y-auto no-print z-10 shadow-lg">
         <h1 class="text-xl font-bold mb-6 text-gray-800">ノート見本作成ツール</h1>
 
-        <!-- テキスト入力 -->
         <div class="mb-5">
             <label class="block text-sm font-medium text-gray-700 mb-1">見本テキスト</label>
             <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
@@ -181,7 +139,6 @@
             <p class="text-xs text-gray-500 mt-1">※改行すると次の行に移動します。</p>
         </div>
 
-        <!-- 書字方向 -->
         <div class="mb-5">
             <label class="block text-sm font-medium text-gray-700 mb-1">文字の向き</label>
             <div class="flex flex-col space-y-2">
@@ -196,7 +153,6 @@
             </div>
         </div>
 
-        <!-- ノートの規格設定 -->
         <div class="mb-5 border-t border-gray-200 pt-4">
             <h2 class="text-sm font-bold text-gray-700 mb-2">ノートの規格</h2>
             <div class="flex space-x-4">
@@ -211,7 +167,6 @@
             </div>
         </div>
 
-        <!-- マス目のスタイル -->
         <div class="mb-5">
             <label class="block text-sm font-medium text-gray-700 mb-1">マス目の種類</label>
             <select id="gridStyle" class="w-full border border-gray-300 rounded-md p-2 text-sm">
@@ -223,7 +178,6 @@
             </select>
         </div>
 
-        <!-- フォントサイズ調整 -->
         <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 mb-1">
                 文字の大きさ: <span id="fontSizeDisplay">80</span>%
@@ -242,10 +196,8 @@
         </div>
     </div>
 
-    <!-- プレビューエリア -->
     <div class="flex-1 overflow-auto bg-gray-500 print-area flex justify-center py-8">
         <div id="scaleWrapper" style="transform-origin: top center; display: flex; flex-direction: column;">
-            <!-- JSでここにa4-paper（複数）が生成されます -->
         </div>
     </div>
 
@@ -261,6 +213,13 @@
             scaleWrapper: document.getElementById('scaleWrapper')
         };
 
+        // A4用紙の内部利用可能サイズ（padding: 15mm を引いた値）
+        // A4: 210mm x 297mm, padding各辺15mm → 利用可能: 180mm x 267mm
+        // 1mm ≈ 3.7795px
+        const MM_TO_PX = 3.7795;
+        const AVAILABLE_W = 180 * MM_TO_PX; // ≈ 680px
+        const AVAILABLE_H = 267 * MM_TO_PX; // ≈ 1009px
+
         function renderNotebook() {
             const text = elements.input.value;
             const direction = Array.from(elements.direction).find(radio => radio.checked).value;
@@ -269,40 +228,53 @@
             const style = elements.style.value;
             const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
 
-            elements.scaleWrapper.innerHTML = ''; // クリアする
+            elements.scaleWrapper.innerHTML = '';
 
-            const maxLines = rowsCount;
             const cellsPerLine = colsCount;
+            const maxLines = rowsCount;
+
+            // グリッドの列数・行数を計算（A4縦向きに収まるように）
+            // 横書き: gridCols=cellsPerLine, gridRows=maxLines
+            // 縦書き: gridCols=maxLines（列は右→左）, gridRows=cellsPerLine（上→下）
+            let gridCols, gridRows;
+            if (direction === 'horizontal') {
+                gridCols = cellsPerLine;
+                gridRows = maxLines;
+            } else {
+                gridCols = maxLines;
+                gridRows = cellsPerLine;
+            }
+
+            // 正方形のセルサイズを計算（A4に収まる最大サイズ）
+            const cellSize = Math.floor(Math.min(AVAILABLE_W / gridCols, AVAILABLE_H / gridRows));
+            const fontSize = cellSize * fontRatio;
 
             // テキストのパースとマス割り当てロジック
             const lines = text.split('\n');
             const gridData = [];
+            const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
 
             for (const line of lines) {
                 let currentLineChars = [];
                 const chars = Array.from(line);
-                const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
-                
+
                 for (let c = 0; c < chars.length; c++) {
                     const char = chars[c];
 
-                    // 禁則処理: 行頭に来てはいけない文字が行頭になる場合、前の行の最後の文字にくっつける
+                    // 禁則処理
                     if (currentLineChars.length === 0 && gridData.length > 0 && kinsokuChars.includes(char)) {
                         const previousLine = gridData[gridData.length - 1];
-                        // 前の行の最後の文字に追加する
                         previousLine[previousLine.length - 1] += char;
                         continue;
                     }
 
                     currentLineChars.push(char);
-                    // 1行のマス数に達したら、次の行へ折り返し
                     if (currentLineChars.length === cellsPerLine) {
                         gridData.push(currentLineChars);
                         currentLineChars = [];
                     }
                 }
-                
-                // 改行された場合、または文字数が中途半端に余っている場合、残りのマスを空欄で埋める
+
                 if (currentLineChars.length > 0 || chars.length === 0) {
                     while (currentLineChars.length < cellsPerLine) {
                         currentLineChars.push('');
@@ -311,68 +283,71 @@
                 }
             }
 
-            // 何ページ分必要か計算
             if (gridData.length === 0) {
-                gridData.push(Array(cellsPerLine).fill('')); // 最低1行
+                gridData.push(Array(cellsPerLine).fill(''));
             }
             const totalPages = Math.ceil(gridData.length / maxLines) || 1;
 
-            // 各ページを生成して追加
+            // 各ページを生成
             for (let p = 0; p < totalPages; p++) {
                 const pageData = gridData.slice(p * maxLines, (p + 1) * maxLines);
-                
-                // 最終ページなど、指定行数に満たない場合は空行を追加して埋める
                 while (pageData.length < maxLines) {
                     pageData.push(Array(cellsPerLine).fill(''));
                 }
 
-                // paper要素
                 const paperDiv = document.createElement('div');
                 paperDiv.className = 'a4-paper';
 
-                // notebook要素
-                const notebookDiv = document.createElement('div');
-                notebookDiv.className = `notebook-container dir-${direction} ${style}`;
-                
-                // 行・マスの生成
-                for (let i = 0; i < maxLines; i++) {
-                    const rowDiv = document.createElement('div');
-                    rowDiv.className = 'notebook-row';
-                    const lineData = pageData[i];
+                const gridDiv = document.createElement('div');
+                gridDiv.className = `notebook-grid ${style}`;
+                gridDiv.style.gridTemplateColumns = `repeat(${gridCols}, ${cellSize}px)`;
+                gridDiv.style.gridTemplateRows = `repeat(${gridRows}, ${cellSize}px)`;
+                gridDiv.style.fontSize = `${fontSize}px`;
 
-                    for (let j = 0; j < cellsPerLine; j++) {
-                        const cellDiv = document.createElement('div');
-                        cellDiv.className = 'cell';
-                        const char = lineData[j];
-
-                        if (char && char !== '') {
-                            const span = document.createElement('span');
-                            span.className = 'cell-content';
-                            span.textContent = char;
-                            cellDiv.appendChild(span);
+                if (direction === 'horizontal') {
+                    // 横書き: 行(上→下)ごとに、セル(左→右)を並べる
+                    for (let row = 0; row < maxLines; row++) {
+                        const lineData = pageData[row];
+                        for (let col = 0; col < cellsPerLine; col++) {
+                            const cellDiv = createCell(lineData[col]);
+                            gridDiv.appendChild(cellDiv);
                         }
-                        rowDiv.appendChild(cellDiv);
                     }
-                    notebookDiv.appendChild(rowDiv);
+                } else {
+                    // 縦書き: CSS Gridで gridRows x gridCols のグリッドを作成
+                    // 文字の流れ: 右上→下→次の列（左方向）
+                    // gridの並び順: 行優先（左→右、上→下）なので、
+                    // grid位置を明示的に指定する
+                    //
+                    // lineIndex(=行、右→左の列) → grid-column = maxLines - lineIndex
+                    // charIndex(=マス、上→下)   → grid-row = charIndex + 1
+                    for (let lineIndex = 0; lineIndex < maxLines; lineIndex++) {
+                        const lineData = pageData[lineIndex];
+                        for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
+                            const cellDiv = createCell(lineData[charIndex]);
+                            // 右から左へ列を配置
+                            cellDiv.style.gridColumn = maxLines - lineIndex;
+                            cellDiv.style.gridRow = charIndex + 1;
+                            gridDiv.appendChild(cellDiv);
+                        }
+                    }
                 }
-                
-                paperDiv.appendChild(notebookDiv);
+
+                paperDiv.appendChild(gridDiv);
                 elements.scaleWrapper.appendChild(paperDiv);
             }
+        }
 
-            // フォントサイズの計算（レンダリング後）
-            setTimeout(() => {
-                const firstCell = elements.scaleWrapper.querySelector('.cell');
-                if (firstCell) {
-                    const minDimension = Math.min(firstCell.offsetWidth, firstCell.offsetHeight);
-                    const calculatedFontSize = minDimension * fontRatio;
-                    // 全ページのnotebookコンテナにフォントサイズを反映
-                    const notebooks = elements.scaleWrapper.querySelectorAll('.notebook-container');
-                    notebooks.forEach(nb => {
-                        nb.style.fontSize = `${calculatedFontSize}px`;
-                    });
-                }
-            }, 10);
+        function createCell(char) {
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
+            if (char && char !== '') {
+                const span = document.createElement('span');
+                span.className = 'cell-content';
+                span.textContent = char;
+                cellDiv.appendChild(span);
+            }
+            return cellDiv;
         }
 
         function adjustScale() {
@@ -381,7 +356,7 @@
                 return;
             }
             const wrapperWidth = elements.scaleWrapper.parentElement.clientWidth;
-            const paperWidth = 210 * 3.78; // A4幅概算
+            const paperWidth = 210 * 3.78;
             if (wrapperWidth < paperWidth + 40) {
                 const scale = (wrapperWidth - 40) / paperWidth;
                 elements.scaleWrapper.style.transform = `scale(${scale})`;
@@ -395,19 +370,8 @@
         elements.cols.addEventListener('input', renderNotebook);
         elements.rows.addEventListener('input', renderNotebook);
         elements.style.addEventListener('change', renderNotebook);
-        let currentDirection = Array.from(elements.direction).find(radio => radio.checked).value;
-        elements.direction.forEach(radio => radio.addEventListener('change', (e) => {
-            if (e.target.checked && e.target.value !== currentDirection) {
-                // 方向が変わったときに、レイアウト形状（縦向き/横向き）と余白を維持するため、
-                // 「1行のマス数」と「行数」の数値を入れ替える
-                const temp = elements.cols.value;
-                elements.cols.value = elements.rows.value;
-                elements.rows.value = temp;
-                currentDirection = e.target.value;
-            }
-            renderNotebook();
-        }));
-        
+        elements.direction.forEach(radio => radio.addEventListener('change', renderNotebook));
+
         elements.fontSizeRatio.addEventListener('input', (e) => {
             elements.fontSizeDisplay.textContent = e.target.value;
             renderNotebook();
@@ -418,7 +382,6 @@
             renderNotebook();
         });
 
-        // 初期化
         adjustScale();
         renderNotebook();
     </script>
