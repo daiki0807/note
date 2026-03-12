@@ -390,7 +390,16 @@
         elements.cols.addEventListener('input', renderNotebook);
         elements.rows.addEventListener('input', renderNotebook);
         elements.style.addEventListener('change', renderNotebook);
-        elements.direction.forEach(radio => radio.addEventListener('change', renderNotebook));
+        let currentDirection = Array.from(elements.direction).find(r => r.checked).value;
+        elements.direction.forEach(radio => radio.addEventListener('change', (e) => {
+            if (e.target.checked && e.target.value !== currentDirection) {
+                const temp = elements.cols.value;
+                elements.cols.value = elements.rows.value;
+                elements.rows.value = temp;
+                currentDirection = e.target.value;
+            }
+            renderNotebook();
+        }));
 
         elements.fontSizeRatio.addEventListener('input', (e) => {
             elements.fontSizeDisplay.textContent = e.target.value;
