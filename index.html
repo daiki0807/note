@@ -162,6 +162,132 @@
             }
         }
 
+        /* ===== 原稿用紙 (Genko Yoshi) スタイル ===== */
+        .genko-container {
+            display: flex;
+            flex-direction: row-reverse;
+            width: 100%;
+            height: 100%;
+            border: 3px solid #1a1a1a;
+            box-sizing: border-box;
+            font-family: var(--font-kyokasho);
+            position: relative;
+        }
+
+        .genko-title-area {
+            width: 14mm;
+            min-width: 14mm;
+            border-left: 2px solid #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            background: white;
+        }
+
+        .genko-title-area .title-section {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .genko-title-area .title-label {
+            font-size: 9px;
+            color: #6b7280;
+            text-align: center;
+            padding: 1mm 0;
+            border-bottom: 1px solid #16a34a;
+            writing-mode: vertical-rl;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .genko-title-area .title-cell {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-bottom: 1px solid #16a34a;
+            box-sizing: border-box;
+            font-size: 10px;
+        }
+
+        .genko-title-area .title-cell:last-child {
+            border-bottom: none;
+        }
+
+        .genko-grid-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .genko-grid {
+            display: grid;
+            height: 100%;
+        }
+
+        .genko-grid .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            box-sizing: border-box;
+            line-height: 1;
+            border: 1px solid #16a34a;
+        }
+
+        /* 列の左右ボーダーをやや太くして列を区別 */
+        .genko-grid .cell.col-border-left {
+            border-left: 1.5px solid #2d8a4e;
+        }
+
+        .genko-grid .cell.col-border-right {
+            border-right: 1.5px solid #2d8a4e;
+        }
+
+        /* 中央折り目線 */
+        .genko-center-line {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            border-left: 2px solid #1a1a1a;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* 魚尾マーク (上) - 下向き三角 */
+        .genko-center-line::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -7px;
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-top: 12px solid #1a1a1a;
+        }
+
+        /* 魚尾マーク (下) - 上向き三角 */
+        .genko-center-line::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: -7px;
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 12px solid #1a1a1a;
+        }
+
         /* 句読点を右上に配置 */
         .cell-content.punctuation {
             position: absolute;
@@ -299,7 +425,7 @@
             'kokugo-12': { cols: 12, rows: 8, dir: 'vertical', style: 'style-leader' },
             'math-17': { cols: 17, rows: 12, dir: 'horizontal', style: 'style-grid' },
             'math-22': { cols: 22, rows: 15, dir: 'horizontal', style: 'style-grid' },
-            'genko-400': { cols: 20, rows: 20, dir: 'vertical', style: 'style-grid' }
+            'genko-400': { cols: 20, rows: 20, dir: 'vertical', style: 'style-genko', isGenko: true }
         };
 
         const STORAGE_KEY = 'notebookToolState';
@@ -348,6 +474,17 @@
         // 初期化時に保存された状態を読み込む
         loadState();
 
+        // 原稿用紙モードの場合、コントロールを無効化
+        (function applyGenkoDisable() {
+            const tid = elements.templateSelect.value;
+            const isGenko = TEMPLATES[tid]?.isGenko;
+            elements.cols.disabled = !!isGenko;
+            elements.rows.disabled = !!isGenko;
+            elements.style.disabled = !!isGenko;
+            elements.showHeader.disabled = !!isGenko;
+            elements.direction.forEach(r => r.disabled = !!isGenko);
+        })();
+
         function renderNotebook() {
             const text = elements.input.value;
             const direction = Array.from(elements.direction).find(radio => radio.checked).value;
@@ -357,6 +494,15 @@
             const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
 
             elements.scaleWrapper.innerHTML = '';
+
+            // 原稿用紙モードの場合は専用レンダラーを使う
+            const templateId = elements.templateSelect.value;
+            const isGenko = TEMPLATES[templateId]?.isGenko;
+            if (isGenko) {
+                renderGenkoYoshi(text, fontRatio);
+                saveState();
+                return;
+            }
 
             const cellsPerLine = colsCount;
             const maxLines = rowsCount;
@@ -496,6 +642,152 @@
             saveState();
         }
 
+        function renderGenkoYoshi(text, fontRatio) {
+            const CELLS_PER_LINE = 20;
+            const MAX_LINES = 20;
+            const TITLE_AREA_WIDTH = 14; // mm
+            const AVAIL_W_MM = 170;
+            const AVAIL_H_MM = 257;
+
+            // グリッド用の幅と高さを計算
+            const gridWidthMM = AVAIL_W_MM - TITLE_AREA_WIDTH;
+            // 列幅（横）と行高さ（縦）を個別に計算（長方形セル）
+            const cellWidthMM = Math.floor((gridWidthMM / MAX_LINES) * 100) / 100;
+            const cellHeightMM = Math.floor((AVAIL_H_MM / CELLS_PER_LINE) * 100) / 100;
+            const fontSizePx = Math.min(cellWidthMM, cellHeightMM) * 3.7795 * fontRatio;
+
+            // テキストパース
+            const lines = text.split('\n');
+            const gridData = [];
+            const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
+
+            for (const line of lines) {
+                let currentLineChars = [];
+                const chars = Array.from(line);
+                for (let c = 0; c < chars.length; c++) {
+                    const char = chars[c];
+                    if (currentLineChars.length === 0 && gridData.length > 0 && kinsokuChars.includes(char)) {
+                        const previousLine = gridData[gridData.length - 1];
+                        previousLine[previousLine.length - 1] += char;
+                        continue;
+                    }
+                    currentLineChars.push(char);
+                    if (currentLineChars.length === CELLS_PER_LINE) {
+                        gridData.push(currentLineChars);
+                        currentLineChars = [];
+                    }
+                }
+                if (currentLineChars.length > 0 || chars.length === 0) {
+                    while (currentLineChars.length < CELLS_PER_LINE) {
+                        currentLineChars.push('');
+                    }
+                    gridData.push(currentLineChars);
+                }
+            }
+            if (gridData.length === 0) {
+                gridData.push(Array(CELLS_PER_LINE).fill(''));
+            }
+
+            const totalPages = Math.ceil(gridData.length / MAX_LINES) || 1;
+
+            for (let p = 0; p < totalPages; p++) {
+                const pageData = gridData.slice(p * MAX_LINES, (p + 1) * MAX_LINES);
+                while (pageData.length < MAX_LINES) {
+                    pageData.push(Array(CELLS_PER_LINE).fill(''));
+                }
+
+                // A4用紙
+                const paperDiv = document.createElement('div');
+                paperDiv.className = 'a4-paper';
+                paperDiv.style.padding = '20mm';
+
+                // 原稿用紙コンテナ
+                const genkoContainer = document.createElement('div');
+                genkoContainer.className = 'genko-container';
+
+                // === タイトルエリア（右端） ===
+                const titleArea = document.createElement('div');
+                titleArea.className = 'genko-title-area';
+                const titleSection = document.createElement('div');
+                titleSection.className = 'title-section';
+
+                // 上部: 空白（3マス分）
+                const topSpace = document.createElement('div');
+                topSpace.className = 'title-cell';
+                topSpace.style.height = `${cellHeightMM * 3}mm`;
+                topSpace.style.borderBottom = '1.5px solid #2d8a4e';
+                titleSection.appendChild(topSpace);
+
+                // 中央: 名前記入欄（14マス分）
+                const nameArea = document.createElement('div');
+                nameArea.className = 'title-cell';
+                nameArea.style.height = `${cellHeightMM * 14}mm`;
+                nameArea.style.borderBottom = '1.5px solid #2d8a4e';
+                nameArea.style.position = 'relative';
+                titleSection.appendChild(nameArea);
+
+                // 下部: 空白（3マス分）
+                const bottomSpace = document.createElement('div');
+                bottomSpace.className = 'title-cell';
+                bottomSpace.style.height = `${cellHeightMM * 3}mm`;
+                bottomSpace.style.borderBottom = 'none';
+                titleSection.appendChild(bottomSpace);
+
+                titleArea.appendChild(titleSection);
+                genkoContainer.appendChild(titleArea);
+
+                // === グリッドラッパー（中央線含む） ===
+                const gridWrapper = document.createElement('div');
+                gridWrapper.className = 'genko-grid-wrapper';
+
+                // 中央折り目線
+                const centerLine = document.createElement('div');
+                centerLine.className = 'genko-center-line';
+                gridWrapper.appendChild(centerLine);
+
+                // === メイングリッド ===
+                const gridDiv = document.createElement('div');
+                gridDiv.className = 'genko-grid';
+                gridDiv.style.gridTemplateColumns = `repeat(${MAX_LINES}, ${cellWidthMM}mm)`;
+                gridDiv.style.gridTemplateRows = `repeat(${CELLS_PER_LINE}, ${cellHeightMM}mm)`;
+                gridDiv.style.fontSize = `${fontSizePx}px`;
+
+                // 縦書き: 列=行（右→左）, 行=文字（上→下）
+                for (let lineIndex = 0; lineIndex < MAX_LINES; lineIndex++) {
+                    const lineData = pageData[lineIndex];
+                    for (let charIndex = 0; charIndex < CELLS_PER_LINE; charIndex++) {
+                        const cellDiv = document.createElement('div');
+                        cellDiv.className = 'cell';
+
+                        // 列の左端と右端にやや太いボーダー
+                        if (charIndex === 0) cellDiv.classList.add('col-border-left');
+                        if (charIndex === CELLS_PER_LINE - 1) cellDiv.classList.add('col-border-right');
+
+                        const char = lineData[charIndex];
+                        if (char && char !== '') {
+                            const span = document.createElement('span');
+                            span.className = 'cell-content';
+                            if (char.length === 1 && kinsokuChars.includes(char)) {
+                                span.classList.add('punctuation');
+                            }
+                            span.textContent = char;
+                            cellDiv.appendChild(span);
+                        }
+
+                        // 右→左の列配置
+                        cellDiv.style.gridColumn = MAX_LINES - lineIndex;
+                        cellDiv.style.gridRow = charIndex + 1;
+                        gridDiv.appendChild(cellDiv);
+                    }
+                }
+
+                gridWrapper.appendChild(gridDiv);
+                genkoContainer.appendChild(gridWrapper);
+                paperDiv.appendChild(genkoContainer);
+                elements.scaleWrapper.appendChild(paperDiv);
+            }
+        }
+
         const PUNCTUATION_CHARS = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
 
         function createCell(char) {
@@ -581,11 +873,20 @@
 
         elements.templateSelect.addEventListener('change', (e) => {
             const templateId = e.target.value;
+            const isGenko = TEMPLATES[templateId]?.isGenko;
+
+            // 原稿用紙モードではコントロールを無効化
+            elements.cols.disabled = !!isGenko;
+            elements.rows.disabled = !!isGenko;
+            elements.style.disabled = !!isGenko;
+            elements.showHeader.disabled = !!isGenko;
+            elements.direction.forEach(r => r.disabled = !!isGenko);
+
             if (templateId !== 'custom' && TEMPLATES[templateId]) {
                 const tpl = TEMPLATES[templateId];
                 elements.cols.value = tpl.cols;
                 elements.rows.value = tpl.rows;
-                elements.style.value = tpl.style;
+                if (!isGenko) elements.style.value = tpl.style;
                 elements.direction.forEach(radio => {
                     radio.checked = (radio.value === tpl.dir);
                 });
