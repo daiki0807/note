@@ -137,26 +137,40 @@
         }
 
         @media print {
-            body {
-                background-color: white;
+            html, body {
+                background-color: white !important;
+                height: auto !important;
+                min-height: auto !important;
+                width: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+                display: block !important;
             }
             .no-print {
                 display: none !important;
             }
             .print-area {
-                width: 100%;
-                height: 100%;
-                padding: 0;
-                overflow: visible;
-                display: block;
+                width: 100% !important;
+                height: auto !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                overflow: visible !important;
+                display: block !important;
+                position: static !important;
             }
             #scaleWrapper {
                 transform: none !important;
-                margin-bottom: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                display: block !important;
             }
             .a4-paper {
-                box-shadow: none;
-                margin: 0;
+                box-shadow: none !important;
+                margin: 0 !important;
+                border: none !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
                 page-break-after: always;
