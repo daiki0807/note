@@ -316,10 +316,10 @@
         }
     </style>
 </head>
-<body class="flex h-screen overflow-hidden">
+<body class="flex flex-col md:flex-row h-screen overflow-hidden">
 
-    <div class="w-80 bg-white border-r border-gray-200 p-6 flex flex-col h-full overflow-y-auto no-print z-10 shadow-lg">
-        <h1 class="text-xl font-bold mb-6 text-gray-800">ノート見本作成ツール</h1>
+    <div class="w-full md:w-80 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-4 md:p-6 flex flex-col flex-none h-[45vh] md:h-full overflow-y-auto no-print z-10 shadow-lg md:shrink-0">
+        <h1 class="text-xl font-bold mb-4 md:mb-6 text-gray-800">ノート見本作成ツール</h1>
 
         <div class="mb-5">
             <label class="block text-sm font-medium text-gray-700 mb-1">見本テキスト</label>
@@ -411,7 +411,7 @@
         </div>
     </div>
 
-    <div class="flex-1 overflow-auto bg-gray-500 print-area flex justify-center py-8">
+    <div class="flex-1 overflow-auto bg-gray-500 print-area flex justify-center py-4 md:py-8">
         <div id="scaleWrapper" style="transform-origin: top center; display: flex; flex-direction: column; align-items: center;">
         </div>
     </div>
@@ -653,6 +653,9 @@
 
             // 描画が更新されるたびに状態を保存する
             saveState();
+            
+            // DOM形成後にスケール判定を行う
+            setTimeout(adjustScale, 10);
         }
 
         function renderGenkoYoshi(text, fontRatio) {
@@ -793,6 +796,8 @@
                 paperDiv.appendChild(genkoContainer);
                 elements.scaleWrapper.appendChild(paperDiv);
             }
+            
+            setTimeout(adjustScale, 10);
         }
 
         const PUNCTUATION_CHARS = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
@@ -816,17 +821,34 @@
         function adjustScale() {
             if (window.matchMedia('print').matches) {
                 elements.scaleWrapper.style.transform = 'scale(1)';
+                elements.scaleWrapper.style.marginBottom = '0px';
                 return;
             }
+            
+            // 実際のDOM高さを測るために一時的にスケールとマージンを解除
+            elements.scaleWrapper.style.transform = 'scale(1)';
+            elements.scaleWrapper.style.marginBottom = '0px';
+            
             const wrapperWidth = elements.scaleWrapper.parentElement.clientWidth;
             // 原稿用紙モードでは横向き(297mm)、それ以外は縦向き(210mm)
             const isGenko = TEMPLATES[elements.templateSelect.value]?.isGenko;
             const paperWidth = (isGenko ? 297 : 210) * 3.78;
-            if (wrapperWidth < paperWidth + 40) {
-                const scale = (wrapperWidth - 40) / paperWidth;
+            
+            const padding = window.innerWidth < 768 ? 20 : 40;
+            if (wrapperWidth < paperWidth + padding) {
+                const scale = (wrapperWidth - padding) / paperWidth;
+                
+                // 本来の（スケール前の）高さを取得
+                const unscaledHeight = elements.scaleWrapper.offsetHeight;
+                
                 elements.scaleWrapper.style.transform = `scale(${scale})`;
+                
+                // スケール後の余白を削減（ネガティブマージンで下部を詰める）
+                const marginDiff = unscaledHeight * (1 - scale);
+                elements.scaleWrapper.style.marginBottom = `-${marginDiff}px`;
             } else {
                 elements.scaleWrapper.style.transform = 'scale(1)';
+                elements.scaleWrapper.style.marginBottom = '0px';
             }
         }
 
@@ -836,7 +858,9 @@
 
             // Transformを一時的に解除して等倍でキャプチャする
             const originalTransform = elements.scaleWrapper.style.transform;
+            const originalMargin = elements.scaleWrapper.style.marginBottom;
             elements.scaleWrapper.style.transform = 'scale(1)';
+            elements.scaleWrapper.style.marginBottom = '0px';
 
             try {
                 // 最初のページをキャプチャ（複数ページの場合は最初の1枚のみ）
@@ -857,6 +881,7 @@
             } finally {
                 // Transformを元に戻す
                 elements.scaleWrapper.style.transform = originalTransform;
+                elements.scaleWrapper.style.marginBottom = originalMargin;
                 adjustScale();
             }
         }
