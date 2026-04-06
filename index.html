@@ -324,6 +324,88 @@
             line-height: 1;
             transform: translate(30%, -25%);
         }
+
+        /* ===== 数字練習（1年生）スタイル ===== */
+        .number-practice-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        .number-practice-top-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-bottom: 2mm;
+            margin-bottom: 2mm;
+        }
+
+        .number-practice-name-line {
+            border-bottom: 1px solid #93c5fd;
+            width: 55mm;
+            height: 14px;
+        }
+
+        .number-practice-date-area {
+            display: flex;
+            align-items: flex-end;
+            gap: 4mm;
+            font-size: 10px;
+            color: #6b7280;
+        }
+
+        .number-practice-date-item {
+            display: flex;
+            align-items: flex-end;
+            gap: 1mm;
+        }
+
+        .number-practice-date-line {
+            border-bottom: 1px solid #93c5fd;
+            display: inline-block;
+        }
+
+        .number-practice-grid {
+            display: grid;
+        }
+
+        .np-cell {
+            border: 1px solid #7dd3fc;
+            position: relative;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .np-cell.practice-cell::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            border-top: 1px dashed #bae6fd;
+            z-index: 0;
+        }
+
+        .np-cell.practice-cell::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            border-left: 1px dashed #bae6fd;
+            z-index: 0;
+        }
+
+        .np-digit {
+            color: #93c5fd;
+            font-weight: bold;
+            line-height: 1;
+            z-index: 1;
+            position: relative;
+            font-family: sans-serif;
+        }
+
     </style>
     <style id="printPageStyle">
         @media print {
@@ -366,6 +448,7 @@
                 <option value="math-22">算数 22マス（横書き）</option>
                 <option value="square-12">12mm方眼</option>
                 <option value="genko-400">原稿用紙 400字（縦書き）</option>
+                <option value="math-number-1">算数 数字練習 1〜10（1年生）</option>
             </select>
 
             <label class="block text-sm font-medium text-gray-700 mb-1">文字の向き</label>
@@ -455,7 +538,8 @@
             'math-17': { cols: 17, rows: 12, dir: 'horizontal', style: 'style-grid' },
             'math-22': { cols: 22, rows: 15, dir: 'horizontal', style: 'style-grid' },
             'square-12': { cols: 15, rows: 22, dir: 'horizontal', style: 'style-grid-gray' },
-            'genko-400': { cols: 20, rows: 20, dir: 'vertical', style: 'style-genko', isGenko: true }
+            'genko-400': { cols: 20, rows: 20, dir: 'vertical', style: 'style-genko', isGenko: true },
+            'math-number-1': { isNumberPractice: true }
         };
 
         const STORAGE_KEY = 'notebookToolState';
@@ -504,15 +588,15 @@
         // 初期化時に保存された状態を読み込む
         loadState();
 
-        // 原稿用紙モードの場合、コントロールを無効化
+        // 原稿用紙・数字練習モードの場合、コントロールを無効化
         (function applyGenkoDisable() {
             const tid = elements.templateSelect.value;
-            const isGenko = TEMPLATES[tid]?.isGenko;
-            elements.cols.disabled = !!isGenko;
-            elements.rows.disabled = !!isGenko;
-            elements.style.disabled = !!isGenko;
-            elements.showHeader.disabled = !!isGenko;
-            elements.direction.forEach(r => r.disabled = !!isGenko);
+            const isSpecial = TEMPLATES[tid]?.isGenko || TEMPLATES[tid]?.isNumberPractice;
+            elements.cols.disabled = !!isSpecial;
+            elements.rows.disabled = !!isSpecial;
+            elements.style.disabled = !!isSpecial;
+            elements.showHeader.disabled = !!isSpecial;
+            elements.direction.forEach(r => r.disabled = !!isSpecial);
         })();
 
         function renderNotebook() {
@@ -528,11 +612,17 @@
             // 原稿用紙モード以外では縦向き印刷に戻す
             document.getElementById('printPageStyle').textContent = '@media print { @page { size: A4 portrait; margin: 0; } }';
 
-            // 原稿用紙モードの場合は専用レンダラーを使う
+            // 専用テンプレートのレンダラーに分岐
             const templateId = elements.templateSelect.value;
             const isGenko = TEMPLATES[templateId]?.isGenko;
+            const isNumberPractice = TEMPLATES[templateId]?.isNumberPractice;
             if (isGenko) {
                 renderGenkoYoshi(text, fontRatio);
+                saveState();
+                return;
+            }
+            if (isNumberPractice) {
+                renderNumberPractice();
                 saveState();
                 return;
             }
@@ -820,6 +910,135 @@
             setTimeout(adjustScale, 10);
         }
 
+        function renderNumberPractice() {
+            const text = elements.input.value;
+            const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
+            const COLS = 10;
+            const PRACTICE_ROWS = 8;
+            const TOTAL_ROWS = PRACTICE_ROWS + 1;
+
+            const PADDING_H_MM = 8;  // 上下
+            const PADDING_V_MM = 10; // 左右
+            const HEADER_H_MM = 12;
+            const AVAIL_W_MM = 297 - PADDING_V_MM * 2;
+            const AVAIL_H_MM = 210 - PADDING_H_MM * 2 - HEADER_H_MM;
+
+            // セルを正方形に近い比率でページに収める
+            const cellHMM = Math.floor(AVAIL_H_MM / TOTAL_ROWS * 10) / 10;
+            const cellWMM = Math.min(Math.floor(AVAIL_W_MM / COLS * 10) / 10, Math.floor(cellHMM * 1.3 * 10) / 10);
+            const cellHPx = cellHMM * 3.7795;
+
+            document.getElementById('printPageStyle').textContent =
+                '@media print { @page { size: A4 landscape; margin: 0; } }';
+
+            const paperDiv = document.createElement('div');
+            paperDiv.className = 'a4-paper a4-landscape';
+            paperDiv.style.padding = `${PADDING_H_MM}mm ${PADDING_V_MM}mm`;
+            paperDiv.style.justifyContent = 'flex-start';
+            paperDiv.style.alignItems = 'flex-start';
+
+            const container = document.createElement('div');
+            container.className = 'number-practice-container';
+
+            // ヘッダー（名前欄 + がつ・にち・ようび）
+            const topHeader = document.createElement('div');
+            topHeader.className = 'number-practice-top-header';
+            topHeader.style.height = `${HEADER_H_MM}mm`;
+
+            const nameLine = document.createElement('div');
+            nameLine.className = 'number-practice-name-line';
+            topHeader.appendChild(nameLine);
+
+            const dateArea = document.createElement('div');
+            dateArea.className = 'number-practice-date-area';
+            dateArea.innerHTML = `
+                <div class="number-practice-date-item">
+                    <span>がつ</span>
+                    <span class="number-practice-date-line" style="width:14mm;"></span>
+                </div>
+                <div class="number-practice-date-item">
+                    <span>にち</span>
+                    <span class="number-practice-date-line" style="width:14mm;"></span>
+                </div>
+                <div class="number-practice-date-item">
+                    <span>ようび（</span>
+                    <span class="number-practice-date-line" style="width:18mm;"></span>
+                    <span>）</span>
+                </div>
+            `;
+            topHeader.appendChild(dateArea);
+            container.appendChild(topHeader);
+
+            // グリッド
+            const gridDiv = document.createElement('div');
+            gridDiv.className = 'number-practice-grid';
+            gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellWMM}mm)`;
+            gridDiv.style.gridTemplateRows = `repeat(${TOTAL_ROWS}, ${cellHMM}mm)`;
+
+            // 数字ヘッダー行
+            for (let col = 0; col < COLS; col++) {
+                const num = (col + 1).toString();
+                const cellDiv = document.createElement('div');
+                cellDiv.className = 'np-cell';
+
+                const digitSpan = document.createElement('span');
+                digitSpan.className = 'np-digit';
+                digitSpan.style.fontSize = `${cellHPx * 0.72}px`;
+                digitSpan.textContent = num;
+                cellDiv.appendChild(digitSpan);
+
+                gridDiv.appendChild(cellDiv);
+            }
+
+            // テキストを横書きでパース（2行目以降に配置）
+            const lines = text.split('\n');
+            const practiceData = [];
+            for (const line of lines) {
+                let currentLineChars = [];
+                const chars = Array.from(line);
+                for (let c = 0; c < chars.length; c++) {
+                    currentLineChars.push(chars[c]);
+                    if (currentLineChars.length === COLS) {
+                        practiceData.push(currentLineChars);
+                        currentLineChars = [];
+                    }
+                }
+                if (currentLineChars.length > 0 || chars.length === 0) {
+                    while (currentLineChars.length < COLS) {
+                        currentLineChars.push('');
+                    }
+                    practiceData.push(currentLineChars);
+                }
+            }
+
+            // 練習行
+            const practiceFontSize = cellHPx * fontRatio;
+            for (let row = 0; row < PRACTICE_ROWS; row++) {
+                const lineData = practiceData[row] || [];
+                for (let col = 0; col < COLS; col++) {
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = 'np-cell practice-cell';
+                    const char = lineData[col] || '';
+                    if (char) {
+                        const span = document.createElement('span');
+                        span.className = 'cell-content';
+                        span.style.fontSize = `${practiceFontSize}px`;
+                        span.style.fontFamily = 'var(--font-kyokasho)';
+                        span.style.zIndex = '1';
+                        span.textContent = char;
+                        cellDiv.appendChild(span);
+                    }
+                    gridDiv.appendChild(cellDiv);
+                }
+            }
+
+            container.appendChild(gridDiv);
+            paperDiv.appendChild(container);
+            elements.scaleWrapper.appendChild(paperDiv);
+
+            setTimeout(adjustScale, 10);
+        }
+
         const PUNCTUATION_CHARS = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
 
         function createCell(char) {
@@ -850,9 +1069,10 @@
             elements.scaleWrapper.style.marginBottom = '0px';
             
             const wrapperWidth = elements.scaleWrapper.parentElement.clientWidth;
-            // 原稿用紙モードでは横向き(297mm)、それ以外は縦向き(210mm)
-            const isGenko = TEMPLATES[elements.templateSelect.value]?.isGenko;
-            const paperWidth = (isGenko ? 297 : 210) * 3.78;
+            // 横向き(297mm)か縦向き(210mm)か
+            const tplId = elements.templateSelect.value;
+            const isLandscape = TEMPLATES[tplId]?.isGenko || TEMPLATES[tplId]?.isNumberPractice;
+            const paperWidth = (isLandscape ? 297 : 210) * 3.78;
             
             const padding = window.innerWidth < 768 ? 20 : 40;
             if (wrapperWidth < paperWidth + padding) {
@@ -927,24 +1147,26 @@
 
         elements.templateSelect.addEventListener('change', (e) => {
             const templateId = e.target.value;
-            const isGenko = TEMPLATES[templateId]?.isGenko;
 
-            // 原稿用紙モードではコントロールを無効化
-            elements.cols.disabled = !!isGenko;
-            elements.rows.disabled = !!isGenko;
-            elements.style.disabled = !!isGenko;
-            elements.showHeader.disabled = !!isGenko;
-            elements.direction.forEach(r => r.disabled = !!isGenko);
+            // 専用テンプレートではコントロールを無効化
+            const isSpecial = TEMPLATES[templateId]?.isGenko || TEMPLATES[templateId]?.isNumberPractice;
+            elements.cols.disabled = !!isSpecial;
+            elements.rows.disabled = !!isSpecial;
+            elements.style.disabled = !!isSpecial;
+            elements.showHeader.disabled = !!isSpecial;
+            elements.direction.forEach(r => r.disabled = !!isSpecial);
 
             if (templateId !== 'custom' && TEMPLATES[templateId]) {
                 const tpl = TEMPLATES[templateId];
-                elements.cols.value = tpl.cols;
-                elements.rows.value = tpl.rows;
-                if (!isGenko) elements.style.value = tpl.style;
-                elements.direction.forEach(radio => {
-                    radio.checked = (radio.value === tpl.dir);
-                });
-                currentDirection = tpl.dir;
+                if (!isSpecial) {
+                    elements.cols.value = tpl.cols;
+                    elements.rows.value = tpl.rows;
+                    elements.style.value = tpl.style;
+                    elements.direction.forEach(radio => {
+                        radio.checked = (radio.value === tpl.dir);
+                    });
+                    currentDirection = tpl.dir;
+                }
             }
             renderNotebook();
         });
