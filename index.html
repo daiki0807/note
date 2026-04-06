@@ -508,6 +508,41 @@
             <p class="text-xs text-gray-500 mt-1">※マスに対する大きさの割合です。</p>
         </div>
 
+        <div class="mb-5 border-t border-gray-200 pt-4">
+            <h2 class="text-sm font-bold text-gray-700 mb-2">手書きモード</h2>
+            <label class="inline-flex items-center mb-3">
+                <input type="checkbox" id="drawingMode" class="form-checkbox text-purple-600">
+                <span class="ml-2 text-sm">手書きモードをオン</span>
+            </label>
+            <div id="drawingTools" class="hidden">
+                <div class="mb-2">
+                    <label class="block text-xs text-gray-600 mb-1">ツール</label>
+                    <div class="flex gap-2">
+                        <button id="toolFree" onclick="setDrawTool('free')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-purple-500 bg-purple-500 text-white">手書き</button>
+                        <button id="toolLine" onclick="setDrawTool('line')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
+                        <button id="toolEraser" onclick="setDrawTool('eraser')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">消しゴム</button>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="block text-xs text-gray-600 mb-1">色</label>
+                    <div class="flex gap-1 flex-wrap">
+                        <button onclick="setDrawColor('#1e3a8a')" class="w-6 h-6 rounded-full border-2 border-gray-400" style="background:#1e3a8a" title="濃紺"></button>
+                        <button onclick="setDrawColor('#ef4444')" class="w-6 h-6 rounded-full border-2 border-gray-300" style="background:#ef4444" title="赤"></button>
+                        <button onclick="setDrawColor('#3b82f6')" class="w-6 h-6 rounded-full border-2 border-gray-300" style="background:#3b82f6" title="青"></button>
+                        <button onclick="setDrawColor('#22c55e')" class="w-6 h-6 rounded-full border-2 border-gray-300" style="background:#22c55e" title="緑"></button>
+                        <button onclick="setDrawColor('#f97316')" class="w-6 h-6 rounded-full border-2 border-gray-300" style="background:#f97316" title="橙"></button>
+                        <button onclick="setDrawColor('#a855f7')" class="w-6 h-6 rounded-full border-2 border-gray-300" style="background:#a855f7" title="紫"></button>
+                        <button onclick="setDrawColor('#000000')" class="w-6 h-6 rounded-full border-2 border-gray-300" style="background:#000000" title="黒"></button>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="block text-xs text-gray-600 mb-1">太さ: <span id="strokeWidthDisplay">3</span>px</label>
+                    <input type="range" id="strokeWidth" min="1" max="20" value="3" class="w-full" oninput="document.getElementById('strokeWidthDisplay').textContent=this.value">
+                </div>
+                <button onclick="clearAllDrawings()" class="w-full py-1 rounded text-xs font-bold border border-red-300 text-red-600 hover:bg-red-50">全て消去</button>
+            </div>
+        </div>
+
         <div class="mt-auto pt-4 border-t border-gray-200 flex flex-col space-y-2">
             <button onclick="window.print()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1394,29 +1429,199 @@
             }
         }
 
-        // イベントリスナー
-        elements.input.addEventListener('input', renderNotebook);
-        elements.showHeader.addEventListener('change', renderNotebook);
-        elements.cols.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebook(); });
-        elements.rows.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebook(); });
-        elements.style.addEventListener('change', () => { elements.templateSelect.value = 'custom'; renderNotebook(); });
+        // ===== 手書きモード =====
+        const drawing = {
+            active: false,
+            tool: 'free',       // 'free' | 'line' | 'eraser'
+            color: '#1e3a8a',
+            width: 3,
+            isDrawing: false,
+            startX: 0,
+            startY: 0,
+            currentPath: null,
+            previewLine: null,
+        };
+
+        function setDrawTool(tool) {
+            drawing.tool = tool;
+            document.querySelectorAll('.draw-tool-btn').forEach(b => {
+                b.classList.remove('border-purple-500', 'bg-purple-500', 'text-white');
+                b.classList.add('border-gray-300', 'text-gray-600', 'bg-white');
+            });
+            const active = document.getElementById('tool' + tool.charAt(0).toUpperCase() + tool.slice(1));
+            if (active) {
+                active.classList.remove('border-gray-300', 'text-gray-600', 'bg-white');
+                active.classList.add('border-purple-500', 'bg-purple-500', 'text-white');
+            }
+        }
+
+        function setDrawColor(color) {
+            drawing.color = color;
+            document.querySelectorAll('#drawingTools .w-6').forEach(b => {
+                b.style.borderColor = '';
+                b.classList.remove('border-gray-800');
+                b.classList.add('border-gray-300');
+            });
+            event.currentTarget.style.borderColor = '#1e3a8a';
+        }
+
+        document.getElementById('strokeWidth').addEventListener('input', e => {
+            drawing.width = parseInt(e.target.value);
+        });
+
+        document.getElementById('drawingMode').addEventListener('change', e => {
+            drawing.active = e.target.checked;
+            document.getElementById('drawingTools').classList.toggle('hidden', !drawing.active);
+            // SVGオーバーレイのpointer-eventsを切り替え
+            document.querySelectorAll('.drawing-overlay').forEach(svg => {
+                svg.style.pointerEvents = drawing.active ? 'all' : 'none';
+                svg.style.cursor = drawing.active ? 'crosshair' : 'default';
+            });
+        });
+
+        function getScaledPos(svg, e) {
+            const rect = svg.getBoundingClientRect();
+            const scaleX = svg.viewBox.baseVal.width / rect.width;
+            const scaleY = svg.viewBox.baseVal.height / rect.height;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY,
+            };
+        }
+
+        function attachDrawingEvents(svg) {
+            svg.style.pointerEvents = drawing.active ? 'all' : 'none';
+            svg.style.cursor = drawing.active ? 'crosshair' : 'default';
+
+            const onStart = (e) => {
+                if (!drawing.active) return;
+                e.preventDefault();
+                drawing.isDrawing = true;
+                const pos = getScaledPos(svg, e);
+                drawing.startX = pos.x;
+                drawing.startY = pos.y;
+
+                if (drawing.tool === 'free') {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('stroke', drawing.color);
+                    path.setAttribute('stroke-width', drawing.width);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke-linecap', 'round');
+                    path.setAttribute('stroke-linejoin', 'round');
+                    path.setAttribute('d', `M ${pos.x} ${pos.y}`);
+                    svg.appendChild(path);
+                    drawing.currentPath = path;
+                } else if (drawing.tool === 'eraser') {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('stroke', '#ffffff');
+                    path.setAttribute('stroke-width', drawing.width * 3);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke-linecap', 'round');
+                    path.setAttribute('stroke-linejoin', 'round');
+                    path.setAttribute('d', `M ${pos.x} ${pos.y}`);
+                    svg.appendChild(path);
+                    drawing.currentPath = path;
+                } else if (drawing.tool === 'line') {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('stroke', drawing.color);
+                    line.setAttribute('stroke-width', drawing.width);
+                    line.setAttribute('stroke-linecap', 'round');
+                    line.setAttribute('x1', pos.x);
+                    line.setAttribute('y1', pos.y);
+                    line.setAttribute('x2', pos.x);
+                    line.setAttribute('y2', pos.y);
+                    svg.appendChild(line);
+                    drawing.previewLine = line;
+                }
+            };
+
+            const onMove = (e) => {
+                if (!drawing.active || !drawing.isDrawing) return;
+                e.preventDefault();
+                const pos = getScaledPos(svg, e);
+
+                if ((drawing.tool === 'free' || drawing.tool === 'eraser') && drawing.currentPath) {
+                    const d = drawing.currentPath.getAttribute('d');
+                    drawing.currentPath.setAttribute('d', d + ` L ${pos.x} ${pos.y}`);
+                } else if (drawing.tool === 'line' && drawing.previewLine) {
+                    drawing.previewLine.setAttribute('x2', pos.x);
+                    drawing.previewLine.setAttribute('y2', pos.y);
+                }
+            };
+
+            const onEnd = (e) => {
+                drawing.isDrawing = false;
+                drawing.currentPath = null;
+                drawing.previewLine = null;
+            };
+
+            svg.addEventListener('mousedown', onStart);
+            svg.addEventListener('mousemove', onMove);
+            svg.addEventListener('mouseup', onEnd);
+            svg.addEventListener('mouseleave', onEnd);
+            svg.addEventListener('touchstart', onStart, { passive: false });
+            svg.addEventListener('touchmove', onMove, { passive: false });
+            svg.addEventListener('touchend', onEnd);
+        }
+
+        function addDrawingOverlay(paperDiv) {
+            // A4サイズ（縦297mm×210mm, or横）をpx換算してviewBoxに設定
+            const isLandscape = paperDiv.classList.contains('a4-landscape');
+            const W = isLandscape ? 297 * 3.7795 : 210 * 3.7795;
+            const H = isLandscape ? 210 * 3.7795 : 297 * 3.7795;
+
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.classList.add('drawing-overlay');
+            svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+            svg.style.cssText = `
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                pointer-events: none; z-index: 100; overflow: visible;
+            `;
+            paperDiv.style.position = 'relative';
+            paperDiv.appendChild(svg);
+            attachDrawingEvents(svg);
+        }
+
+        function clearAllDrawings() {
+            document.querySelectorAll('.drawing-overlay').forEach(svg => {
+                // viewBox属性など以外のchild要素（描画内容）を削除
+                while (svg.firstChild) svg.removeChild(svg.firstChild);
+            });
+        }
+
+        // renderNotebook後にオーバーレイを付与するためにフック
+        const _origRender = renderNotebook;
+        function renderNotebookWithOverlay() {
+            _origRender();
+            document.querySelectorAll('.a4-paper').forEach(p => {
+                if (!p.querySelector('.drawing-overlay')) {
+                    addDrawingOverlay(p);
+                }
+            });
+        }
+
+        // ===== イベントリスナー =====
+        elements.input.addEventListener('input', renderNotebookWithOverlay);
+        elements.showHeader.addEventListener('change', renderNotebookWithOverlay);
+        elements.cols.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebookWithOverlay(); });
+        elements.rows.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebookWithOverlay(); });
+        elements.style.addEventListener('change', () => { elements.templateSelect.value = 'custom'; renderNotebookWithOverlay(); });
         let currentDirection = Array.from(elements.direction).find(r => r.checked).value;
         elements.direction.forEach(radio => radio.addEventListener('change', (e) => {
             if (e.target.checked && e.target.value !== currentDirection) {
-                // 文字の向きを変えた時はカスタム扱いにする
                 elements.templateSelect.value = 'custom';
                 const temp = elements.cols.value;
                 elements.cols.value = elements.rows.value;
                 elements.rows.value = temp;
                 currentDirection = e.target.value;
             }
-            renderNotebook();
+            renderNotebookWithOverlay();
         }));
 
         elements.templateSelect.addEventListener('change', (e) => {
             const templateId = e.target.value;
-
-            // 専用テンプレートではコントロールを無効化
             const isSpecial = isSpecialTemplate(templateId);
             elements.cols.disabled = !!isSpecial;
             elements.rows.disabled = !!isSpecial;
@@ -1436,21 +1641,24 @@
                     currentDirection = tpl.dir;
                 }
             }
-            renderNotebook();
+            renderNotebookWithOverlay();
         });
 
         elements.fontSizeRatio.addEventListener('input', (e) => {
             elements.fontSizeDisplay.textContent = e.target.value;
-            renderNotebook();
+            renderNotebookWithOverlay();
         });
 
         window.addEventListener('resize', () => {
             adjustScale();
-            renderNotebook();
+            // リサイズ時はオーバーレイを再アタッチ（サイズ追従のため）
+            document.querySelectorAll('.a4-paper').forEach(p => {
+                if (!p.querySelector('.drawing-overlay')) addDrawingOverlay(p);
+            });
         });
 
         adjustScale();
-        renderNotebook();
+        renderNotebookWithOverlay();
     </script>
 </body>
 </html>
