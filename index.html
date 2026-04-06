@@ -518,11 +518,12 @@
                 <div class="mb-2">
                     <label class="block text-xs text-gray-600 mb-1">ツール</label>
                     <div class="flex gap-1 flex-wrap">
+                        <button id="toolSelect"  onclick="setDrawTool('select')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">選択/移動</button>
                         <button id="toolFree"    onclick="setDrawTool('free')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-purple-500 bg-purple-500 text-white">手書き</button>
-                        <button id="toolLine"    onclick="setDrawTool('line')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
                         <button id="toolEraser"  onclick="setDrawTool('eraser')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">消しゴム</button>
                     </div>
                     <div class="flex gap-1 flex-wrap mt-1">
+                        <button id="toolLine"    onclick="setDrawTool('line')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
                         <button id="toolCircle"   onclick="setDrawTool('circle')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">○</button>
                         <button id="toolTriangle" onclick="setDrawTool('triangle')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">△</button>
                         <button id="toolRect"     onclick="setDrawTool('rect')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">□</button>
@@ -545,7 +546,10 @@
                     <label class="block text-xs text-gray-600 mb-1">太さ: <span id="strokeWidthDisplay">3</span>px</label>
                     <input type="range" id="strokeWidth" min="1" max="20" value="3" class="w-full" oninput="document.getElementById('strokeWidthDisplay').textContent=this.value">
                 </div>
-                <button onclick="clearAllDrawings()" class="w-full py-1 rounded text-xs font-bold border border-red-300 text-red-600 hover:bg-red-50">全て消去</button>
+                <div class="flex gap-1 mt-1">
+                    <button id="deleteSelected" onclick="deleteSelectedElement()" class="flex-1 py-1 rounded text-xs font-bold border border-orange-300 text-orange-600 hover:bg-orange-50 hidden">選択中を削除</button>
+                    <button onclick="clearAllDrawings()" class="flex-1 py-1 rounded text-xs font-bold border border-red-300 text-red-600 hover:bg-red-50">全て消去</button>
+                </div>
             </div>
         </div>
 
@@ -1438,7 +1442,7 @@
         // ===== 手書きモード =====
         const drawing = {
             active: false,
-            tool: 'free',       // 'free' | 'line' | 'eraser'
+            tool: 'free',
             color: '#1e3a8a',
             width: 3,
             isDrawing: false,
@@ -1446,10 +1450,17 @@
             startY: 0,
             currentPath: null,
             previewLine: null,
+            // 選択/移動
+            selectedEl: null,
+            selectionRect: null,  // 選択ハイライト用rect
+            dragOffsetX: 0,
+            dragOffsetY: 0,
         };
 
         function setDrawTool(tool) {
             drawing.tool = tool;
+            // 選択解除
+            clearSelection();
             document.querySelectorAll('.draw-tool-btn').forEach(b => {
                 b.classList.remove('border-purple-500', 'bg-purple-500', 'text-white');
                 b.classList.add('border-gray-300', 'text-gray-600', 'bg-white');
@@ -1459,6 +1470,11 @@
                 active.classList.remove('border-gray-300', 'text-gray-600', 'bg-white');
                 active.classList.add('border-purple-500', 'bg-purple-500', 'text-white');
             }
+            // カーソル更新
+            const cursor = tool === 'select' ? 'default' : 'crosshair';
+            document.querySelectorAll('.drawing-overlay').forEach(svg => {
+                svg.style.cursor = cursor;
+            });
         }
 
         function setDrawColor(color) {
@@ -1508,6 +1524,34 @@
                 const pos = getScaledPos(svg, e);
                 drawing.startX = pos.x;
                 drawing.startY = pos.y;
+
+                if (drawing.tool === 'select') {
+                    // クリックした要素を探す（overlayの直接子要素で選択ハイライト以外）
+                    const hit = document.elementFromPoint(
+                        e.touches ? e.touches[0].clientX : e.clientX,
+                        e.touches ? e.touches[0].clientY : e.clientY
+                    );
+                    const target = (hit && hit !== svg && hit.closest('svg') === svg && !hit.classList.contains('sel-highlight'))
+                        ? hit : null;
+
+                    // 前の選択を解除
+                    clearSelection();
+
+                    if (target && target !== svg) {
+                        drawing.selectedEl = target;
+                        showSelectionHighlight(svg, target);
+                        document.getElementById('deleteSelected').classList.remove('hidden');
+
+                        // ドラッグオフセット計算（transform translate考慮）
+                        const tx = parseFloat(target.getAttribute('data-tx') || 0);
+                        const ty = parseFloat(target.getAttribute('data-ty') || 0);
+                        drawing.dragOffsetX = pos.x - tx;
+                        drawing.dragOffsetY = pos.y - ty;
+                    } else {
+                        document.getElementById('deleteSelected').classList.add('hidden');
+                    }
+                    return;
+                }
 
                 if (drawing.tool === 'free') {
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -1573,6 +1617,18 @@
                 e.preventDefault();
                 const pos = getScaledPos(svg, e);
 
+                // 選択ツール: 要素をドラッグ移動
+                if (drawing.tool === 'select') {
+                    if (!drawing.selectedEl) return;
+                    const newTx = pos.x - drawing.dragOffsetX;
+                    const newTy = pos.y - drawing.dragOffsetY;
+                    drawing.selectedEl.setAttribute('transform', `translate(${newTx},${newTy})`);
+                    drawing.selectedEl.setAttribute('data-tx', newTx);
+                    drawing.selectedEl.setAttribute('data-ty', newTy);
+                    updateSelectionHighlight(svg, drawing.selectedEl);
+                    return;
+                }
+
                 if ((drawing.tool === 'free' || drawing.tool === 'eraser') && drawing.currentPath) {
                     const d = drawing.currentPath.getAttribute('d');
                     drawing.currentPath.setAttribute('d', d + ` L ${pos.x} ${pos.y}`);
@@ -1630,6 +1686,63 @@
             svg.addEventListener('touchstart', onStart, { passive: false });
             svg.addEventListener('touchmove', onMove, { passive: false });
             svg.addEventListener('touchend', onEnd);
+        }
+
+        function getElementBBox(el) {
+            try { return el.getBBox(); } catch(e) { return null; }
+        }
+
+        function showSelectionHighlight(svg, el) {
+            removeSelectionHighlight(svg);
+            const bb = getElementBBox(el);
+            if (!bb) return;
+            const tx = parseFloat(el.getAttribute('data-tx') || 0);
+            const ty = parseFloat(el.getAttribute('data-ty') || 0);
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.classList.add('sel-highlight');
+            rect.setAttribute('x', bb.x + tx - 6);
+            rect.setAttribute('y', bb.y + ty - 6);
+            rect.setAttribute('width', bb.width + 12);
+            rect.setAttribute('height', bb.height + 12);
+            rect.setAttribute('fill', 'none');
+            rect.setAttribute('stroke', '#6366f1');
+            rect.setAttribute('stroke-width', '2');
+            rect.setAttribute('stroke-dasharray', '6,4');
+            rect.setAttribute('pointer-events', 'none');
+            svg.appendChild(rect);
+            drawing.selectionRect = rect;
+        }
+
+        function updateSelectionHighlight(svg, el) {
+            if (!drawing.selectionRect) return;
+            const bb = getElementBBox(el);
+            if (!bb) return;
+            const tx = parseFloat(el.getAttribute('data-tx') || 0);
+            const ty = parseFloat(el.getAttribute('data-ty') || 0);
+            drawing.selectionRect.setAttribute('x', bb.x + tx - 6);
+            drawing.selectionRect.setAttribute('y', bb.y + ty - 6);
+            drawing.selectionRect.setAttribute('width', bb.width + 12);
+            drawing.selectionRect.setAttribute('height', bb.height + 12);
+        }
+
+        function removeSelectionHighlight(svg) {
+            if (drawing.selectionRect) {
+                drawing.selectionRect.remove();
+                drawing.selectionRect = null;
+            }
+        }
+
+        function clearSelection() {
+            document.querySelectorAll('.drawing-overlay').forEach(s => removeSelectionHighlight(s));
+            drawing.selectedEl = null;
+            document.getElementById('deleteSelected').classList.add('hidden');
+        }
+
+        function deleteSelectedElement() {
+            if (!drawing.selectedEl) return;
+            const el = drawing.selectedEl;
+            clearSelection();
+            el.remove();
         }
 
         function addDrawingOverlay(paperDiv) {
