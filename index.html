@@ -428,6 +428,17 @@
 
 さしすせそ</textarea>
             <p class="text-xs text-gray-500 mt-1">※改行すると次の行に移動します。</p>
+            <div class="mt-2">
+                <p class="text-xs text-gray-500 mb-1">文字色（テキストを選択してボタンを押す）</p>
+                <div class="flex gap-1 flex-wrap">
+                    <button onclick="wrapSelectedText('赤')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#ef4444">赤</button>
+                    <button onclick="wrapSelectedText('青')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#3b82f6">青</button>
+                    <button onclick="wrapSelectedText('黄')" class="px-2 py-1 rounded text-xs font-bold text-gray-800" style="background:#facc15">黄</button>
+                    <button onclick="wrapSelectedText('緑')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#22c55e">緑</button>
+                    <button onclick="wrapSelectedText('橙')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#f97316">橙</button>
+                    <button onclick="removeColorTags()" class="px-2 py-1 rounded text-xs font-bold text-gray-700 bg-gray-200 hover:bg-gray-300">色を消す</button>
+                </div>
+            </div>
         </div>
 
         <div class="mb-5">
@@ -669,42 +680,44 @@
             const cellSizePx = cellSizeMM * 3.7795; // フォントサイズ計算用
             const fontSize = cellSizePx * fontRatio;
 
-            // テキストのパースとマス割り当てロジック
+            // テキストのパースとマス割り当てロジック（色対応）
             const lines = text.split('\n');
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
+            const EMPTY_TOKEN = { char: '', color: null };
 
             for (const line of lines) {
-                let currentLineChars = [];
-                const chars = Array.from(line);
+                let currentLineTokens = [];
+                const tokens = parseColoredText(line);
 
-                for (let c = 0; c < chars.length; c++) {
-                    const char = chars[c];
+                for (let c = 0; c < tokens.length; c++) {
+                    const token = tokens[c];
 
                     // 禁則処理
-                    if (currentLineChars.length === 0 && gridData.length > 0 && kinsokuChars.includes(char)) {
+                    if (currentLineTokens.length === 0 && gridData.length > 0 && kinsokuChars.includes(token.char)) {
                         const previousLine = gridData[gridData.length - 1];
-                        previousLine[previousLine.length - 1] += char;
+                        const last = previousLine[previousLine.length - 1];
+                        previousLine[previousLine.length - 1] = { char: last.char + token.char, color: last.color };
                         continue;
                     }
 
-                    currentLineChars.push(char);
-                    if (currentLineChars.length === cellsPerLine) {
-                        gridData.push(currentLineChars);
-                        currentLineChars = [];
+                    currentLineTokens.push(token);
+                    if (currentLineTokens.length === cellsPerLine) {
+                        gridData.push(currentLineTokens);
+                        currentLineTokens = [];
                     }
                 }
 
-                if (currentLineChars.length > 0 || chars.length === 0) {
-                    while (currentLineChars.length < cellsPerLine) {
-                        currentLineChars.push('');
+                if (currentLineTokens.length > 0 || tokens.length === 0) {
+                    while (currentLineTokens.length < cellsPerLine) {
+                        currentLineTokens.push(EMPTY_TOKEN);
                     }
-                    gridData.push(currentLineChars);
+                    gridData.push(currentLineTokens);
                 }
             }
 
             if (gridData.length === 0) {
-                gridData.push(Array(cellsPerLine).fill(''));
+                gridData.push(Array(cellsPerLine).fill(EMPTY_TOKEN));
             }
             const totalPages = Math.ceil(gridData.length / maxLines) || 1;
 
@@ -712,7 +725,7 @@
             for (let p = 0; p < totalPages; p++) {
                 const pageData = gridData.slice(p * maxLines, (p + 1) * maxLines);
                 while (pageData.length < maxLines) {
-                    pageData.push(Array(cellsPerLine).fill(''));
+                    pageData.push(Array(cellsPerLine).fill(EMPTY_TOKEN));
                 }
 
                 const paperDiv = document.createElement('div');
@@ -751,19 +764,18 @@
                     for (let row = 0; row < maxLines; row++) {
                         const lineData = pageData[row];
                         for (let col = 0; col < cellsPerLine; col++) {
-                            const cellDiv = createCell(lineData[col]);
+                            const t = lineData[col];
+                            const cellDiv = createCell(t.char, t.color);
                             gridDiv.appendChild(cellDiv);
                         }
                     }
                 } else {
                     // 縦書き: gridCols=maxLines列 × gridRows=cellsPerLine行
-                    // 文字の流れ: 右上→下→次の列（左方向）
-                    // lineIndex(=行、右→左の列) → grid-column = maxLines - lineIndex
-                    // charIndex(=マス、上→下)   → grid-row = charIndex + 1
                     for (let lineIndex = 0; lineIndex < maxLines; lineIndex++) {
                         const lineData = pageData[lineIndex];
                         for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
-                            const cellDiv = createCell(lineData[charIndex]);
+                            const t = lineData[charIndex];
+                            const cellDiv = createCell(t.char, t.color);
                             cellDiv.style.gridColumn = maxLines - lineIndex;
                             cellDiv.style.gridRow = charIndex + 1;
                             gridDiv.appendChild(cellDiv);
@@ -805,36 +817,36 @@
             // 印刷時に横向きにするための@pageルールを設定
             document.getElementById('printPageStyle').textContent = '@media print { @page { size: A4 landscape; margin: 0; } }';
 
-            // テキストパース
+            // テキストパース（色対応）
             const lines = text.split('\n');
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
+            const EMPTY_G = { char: '', color: null };
 
             for (const line of lines) {
-                let currentLineChars = [];
-                const chars = Array.from(line);
-                for (let c = 0; c < chars.length; c++) {
-                    const char = chars[c];
-                    if (currentLineChars.length === 0 && gridData.length > 0 && kinsokuChars.includes(char)) {
+                let currentLineTokens = [];
+                const tokens = parseColoredText(line);
+                for (let c = 0; c < tokens.length; c++) {
+                    const token = tokens[c];
+                    if (currentLineTokens.length === 0 && gridData.length > 0 && kinsokuChars.includes(token.char)) {
                         const previousLine = gridData[gridData.length - 1];
-                        previousLine[previousLine.length - 1] += char;
+                        const last = previousLine[previousLine.length - 1];
+                        previousLine[previousLine.length - 1] = { char: last.char + token.char, color: last.color };
                         continue;
                     }
-                    currentLineChars.push(char);
-                    if (currentLineChars.length === CELLS_PER_LINE) {
-                        gridData.push(currentLineChars);
-                        currentLineChars = [];
+                    currentLineTokens.push(token);
+                    if (currentLineTokens.length === CELLS_PER_LINE) {
+                        gridData.push(currentLineTokens);
+                        currentLineTokens = [];
                     }
                 }
-                if (currentLineChars.length > 0 || chars.length === 0) {
-                    while (currentLineChars.length < CELLS_PER_LINE) {
-                        currentLineChars.push('');
-                    }
-                    gridData.push(currentLineChars);
+                if (currentLineTokens.length > 0 || tokens.length === 0) {
+                    while (currentLineTokens.length < CELLS_PER_LINE) currentLineTokens.push(EMPTY_G);
+                    gridData.push(currentLineTokens);
                 }
             }
             if (gridData.length === 0) {
-                gridData.push(Array(CELLS_PER_LINE).fill(''));
+                gridData.push(Array(CELLS_PER_LINE).fill(EMPTY_G));
             }
 
             const totalPages = Math.ceil(gridData.length / MAX_LINES) || 1;
@@ -842,7 +854,7 @@
             for (let p = 0; p < totalPages; p++) {
                 const pageData = gridData.slice(p * MAX_LINES, (p + 1) * MAX_LINES);
                 while (pageData.length < MAX_LINES) {
-                    pageData.push(Array(CELLS_PER_LINE).fill(''));
+                    pageData.push(Array(CELLS_PER_LINE).fill(EMPTY_G));
                 }
 
                 // A4横向き用紙
@@ -897,7 +909,8 @@
                         if (charIndex === 0) cellDiv.classList.add('col-border-left');
                         if (charIndex === CELLS_PER_LINE - 1) cellDiv.classList.add('col-border-right');
 
-                        const char = lineData[charIndex];
+                        const token = lineData[charIndex];
+                        const char = token?.char || '';
                         if (char && char !== '') {
                             const span = document.createElement('span');
                             span.className = 'cell-content';
@@ -905,6 +918,7 @@
                                 span.classList.add('punctuation');
                             }
                             span.textContent = char;
+                            if (token?.color) span.style.color = token.color;
                             cellDiv.appendChild(span);
                         }
 
@@ -1074,16 +1088,16 @@
                 gridDiv.appendChild(cellDiv);
             }
 
-            // テキストをパース（横書き）
+            // テキストをパース（横書き・色対応）
             const lines = text.split('\n');
             const practiceData = [];
             for (const line of lines) {
                 let cur = [];
-                for (const ch of Array.from(line)) {
-                    cur.push(ch);
+                for (const token of parseColoredText(line)) {
+                    cur.push(token);
                     if (cur.length === COLS) { practiceData.push(cur); cur = []; }
                 }
-                while (cur.length < COLS) cur.push('');
+                while (cur.length < COLS) cur.push({ char: '', color: null });
                 practiceData.push(cur);
             }
 
@@ -1095,14 +1109,15 @@
                 for (let col = 0; col < COLS; col++) {
                     const cellDiv = document.createElement('div');
                     cellDiv.className = 'np-cell practice-cell';
-                    const char = lineData[col] || '';
-                    if (char) {
+                    const token = lineData[col] || { char: '', color: null };
+                    if (token.char) {
                         const span = document.createElement('span');
                         span.className = 'cell-content';
                         span.style.fontSize = `${practiceFontSize}px`;
                         span.style.fontFamily = 'var(--font-kyokasho)';
                         span.style.zIndex = '1';
-                        span.textContent = char;
+                        span.textContent = token.char;
+                        if (token.color) span.style.color = token.color;
                         cellDiv.appendChild(span);
                     }
                     gridDiv.appendChild(cellDiv);
@@ -1195,24 +1210,18 @@
                 gridDiv.appendChild(cellDiv);
             }
 
-            // テキストを横書きでパース（2行目以降に配置）
+            // テキストを横書きでパース（2行目以降・色対応）
             const lines = text.split('\n');
             const practiceData = [];
             for (const line of lines) {
-                let currentLineChars = [];
-                const chars = Array.from(line);
-                for (let c = 0; c < chars.length; c++) {
-                    currentLineChars.push(chars[c]);
-                    if (currentLineChars.length === COLS) {
-                        practiceData.push(currentLineChars);
-                        currentLineChars = [];
-                    }
+                let cur = [];
+                for (const token of parseColoredText(line)) {
+                    cur.push(token);
+                    if (cur.length === COLS) { practiceData.push(cur); cur = []; }
                 }
-                if (currentLineChars.length > 0 || chars.length === 0) {
-                    while (currentLineChars.length < COLS) {
-                        currentLineChars.push('');
-                    }
-                    practiceData.push(currentLineChars);
+                if (cur.length > 0 || parseColoredText(line).length === 0) {
+                    while (cur.length < COLS) cur.push({ char: '', color: null });
+                    practiceData.push(cur);
                 }
             }
 
@@ -1223,14 +1232,15 @@
                 for (let col = 0; col < COLS; col++) {
                     const cellDiv = document.createElement('div');
                     cellDiv.className = 'np-cell practice-cell';
-                    const char = lineData[col] || '';
-                    if (char) {
+                    const token = lineData[col] || { char: '', color: null };
+                    if (token.char) {
                         const span = document.createElement('span');
                         span.className = 'cell-content';
                         span.style.fontSize = `${practiceFontSize}px`;
                         span.style.fontFamily = 'var(--font-kyokasho)';
                         span.style.zIndex = '1';
-                        span.textContent = char;
+                        span.textContent = token.char;
+                        if (token.color) span.style.color = token.color;
                         cellDiv.appendChild(span);
                     }
                     gridDiv.appendChild(cellDiv);
@@ -1246,17 +1256,70 @@
 
         const PUNCTUATION_CHARS = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
 
-        function createCell(char) {
+        // 色タグの定義
+        const COLOR_MAP = {
+            '赤': '#ef4444',
+            '青': '#3b82f6',
+            '黄': '#eab308',
+            '緑': '#22c55e',
+            '橙': '#f97316',
+        };
+
+        // テキストを色タグ付きで1文字ずつに分解する
+        // 例: "あ[赤:い]う" → [{char:'あ'}, {char:'い', color:'#ef4444'}, {char:'う'}]
+        function parseColoredText(text) {
+            const result = [];
+            const re = /\[([^:]+):([^\]]+)\]/g;
+            let last = 0, m;
+            while ((m = re.exec(text)) !== null) {
+                // タグ前の通常文字
+                for (const ch of Array.from(text.slice(last, m.index))) {
+                    result.push({ char: ch });
+                }
+                const colorName = m[1];
+                const color = COLOR_MAP[colorName];
+                for (const ch of Array.from(m[2])) {
+                    result.push({ char: ch, color: color || null });
+                }
+                last = re.lastIndex;
+            }
+            for (const ch of Array.from(text.slice(last))) {
+                result.push({ char: ch });
+            }
+            return result;
+        }
+
+        // テキストエリアの選択範囲を色タグで囲む
+        function wrapSelectedText(colorName) {
+            const ta = elements.input;
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            if (start === end) return;
+            const selected = ta.value.slice(start, end);
+            const wrapped = `[${colorName}:${selected}]`;
+            ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
+            ta.selectionStart = start;
+            ta.selectionEnd = start + wrapped.length;
+            renderNotebook();
+        }
+
+        // 色タグをすべて除去する
+        function removeColorTags() {
+            elements.input.value = elements.input.value.replace(/\[([^:]+):([^\]]+)\]/g, '$2');
+            renderNotebook();
+        }
+
+        function createCell(char, color) {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
             if (char && char !== '') {
                 const span = document.createElement('span');
                 span.className = 'cell-content';
-                // 1文字だけの句読点は右上に配置
                 if (char.length === 1 && PUNCTUATION_CHARS.includes(char)) {
                     span.classList.add('punctuation');
                 }
                 span.textContent = char;
+                if (color) span.style.color = color;
                 cellDiv.appendChild(span);
             }
             return cellDiv;
