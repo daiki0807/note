@@ -1335,13 +1335,13 @@
             ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
             ta.selectionStart = start;
             ta.selectionEnd = start + wrapped.length;
-            renderNotebook();
+            renderNotebookWithOverlay();
         }
 
         // 色タグをすべて除去する
         function removeColorTags() {
             elements.input.value = elements.input.value.replace(/\[([^:]+):([^\]]+)\]/g, '$2');
-            renderNotebook();
+            renderNotebookWithOverlay();
         }
 
         function createCell(char, color) {
