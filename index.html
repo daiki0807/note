@@ -517,10 +517,16 @@
             <div id="drawingTools" class="hidden">
                 <div class="mb-2">
                     <label class="block text-xs text-gray-600 mb-1">ツール</label>
-                    <div class="flex gap-2">
-                        <button id="toolFree" onclick="setDrawTool('free')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-purple-500 bg-purple-500 text-white">手書き</button>
-                        <button id="toolLine" onclick="setDrawTool('line')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
-                        <button id="toolEraser" onclick="setDrawTool('eraser')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">消しゴム</button>
+                    <div class="flex gap-1 flex-wrap">
+                        <button id="toolFree"    onclick="setDrawTool('free')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-purple-500 bg-purple-500 text-white">手書き</button>
+                        <button id="toolLine"    onclick="setDrawTool('line')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
+                        <button id="toolEraser"  onclick="setDrawTool('eraser')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">消しゴム</button>
+                    </div>
+                    <div class="flex gap-1 flex-wrap mt-1">
+                        <button id="toolCircle"   onclick="setDrawTool('circle')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">○</button>
+                        <button id="toolTriangle" onclick="setDrawTool('triangle')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">△</button>
+                        <button id="toolRect"     onclick="setDrawTool('rect')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">□</button>
+                        <button id="toolStar"     onclick="setDrawTool('star')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">★</button>
                     </div>
                 </div>
                 <div class="mb-2">
@@ -1528,12 +1534,37 @@
                     line.setAttribute('stroke', drawing.color);
                     line.setAttribute('stroke-width', drawing.width);
                     line.setAttribute('stroke-linecap', 'round');
-                    line.setAttribute('x1', pos.x);
-                    line.setAttribute('y1', pos.y);
-                    line.setAttribute('x2', pos.x);
-                    line.setAttribute('y2', pos.y);
+                    line.setAttribute('x1', pos.x); line.setAttribute('y1', pos.y);
+                    line.setAttribute('x2', pos.x); line.setAttribute('y2', pos.y);
                     svg.appendChild(line);
                     drawing.previewLine = line;
+                } else if (drawing.tool === 'circle') {
+                    const el = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+                    el.setAttribute('stroke', drawing.color);
+                    el.setAttribute('stroke-width', drawing.width);
+                    el.setAttribute('fill', 'none');
+                    el.setAttribute('cx', pos.x); el.setAttribute('cy', pos.y);
+                    el.setAttribute('rx', 0); el.setAttribute('ry', 0);
+                    svg.appendChild(el);
+                    drawing.previewLine = el;
+                } else if (drawing.tool === 'rect') {
+                    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    el.setAttribute('stroke', drawing.color);
+                    el.setAttribute('stroke-width', drawing.width);
+                    el.setAttribute('fill', 'none');
+                    el.setAttribute('x', pos.x); el.setAttribute('y', pos.y);
+                    el.setAttribute('width', 0); el.setAttribute('height', 0);
+                    svg.appendChild(el);
+                    drawing.previewLine = el;
+                } else if (drawing.tool === 'triangle' || drawing.tool === 'star') {
+                    const el = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                    el.setAttribute('stroke', drawing.color);
+                    el.setAttribute('stroke-width', drawing.width);
+                    el.setAttribute('fill', 'none');
+                    el.setAttribute('stroke-linejoin', 'round');
+                    el.setAttribute('points', `${pos.x},${pos.y}`);
+                    svg.appendChild(el);
+                    drawing.previewLine = el;
                 }
             };
 
@@ -1548,6 +1579,41 @@
                 } else if (drawing.tool === 'line' && drawing.previewLine) {
                     drawing.previewLine.setAttribute('x2', pos.x);
                     drawing.previewLine.setAttribute('y2', pos.y);
+                } else if (drawing.tool === 'circle' && drawing.previewLine) {
+                    const dx = pos.x - drawing.startX, dy = pos.y - drawing.startY;
+                    const r = Math.sqrt(dx*dx + dy*dy) / 2;
+                    const cx = (drawing.startX + pos.x) / 2, cy = (drawing.startY + pos.y) / 2;
+                    drawing.previewLine.setAttribute('cx', cx);
+                    drawing.previewLine.setAttribute('cy', cy);
+                    drawing.previewLine.setAttribute('rx', r);
+                    drawing.previewLine.setAttribute('ry', r);
+                } else if (drawing.tool === 'rect' && drawing.previewLine) {
+                    const x = Math.min(drawing.startX, pos.x), y = Math.min(drawing.startY, pos.y);
+                    const w = Math.abs(pos.x - drawing.startX), h = Math.abs(pos.y - drawing.startY);
+                    drawing.previewLine.setAttribute('x', x);
+                    drawing.previewLine.setAttribute('y', y);
+                    drawing.previewLine.setAttribute('width', w);
+                    drawing.previewLine.setAttribute('height', h);
+                } else if (drawing.tool === 'triangle' && drawing.previewLine) {
+                    const dx = pos.x - drawing.startX, dy = pos.y - drawing.startY;
+                    const r = Math.sqrt(dx*dx + dy*dy);
+                    const cx = drawing.startX, cy = drawing.startY;
+                    const p1 = `${cx},${cy - r}`;
+                    const p2 = `${cx - r * 0.866},${cy + r * 0.5}`;
+                    const p3 = `${cx + r * 0.866},${cy + r * 0.5}`;
+                    drawing.previewLine.setAttribute('points', `${p1} ${p2} ${p3}`);
+                } else if (drawing.tool === 'star' && drawing.previewLine) {
+                    const dx = pos.x - drawing.startX, dy = pos.y - drawing.startY;
+                    const outerR = Math.sqrt(dx*dx + dy*dy);
+                    const innerR = outerR * 0.4;
+                    const cx = drawing.startX, cy = drawing.startY;
+                    let pts = '';
+                    for (let i = 0; i < 10; i++) {
+                        const angle = (i * Math.PI / 5) - Math.PI / 2;
+                        const r2 = i % 2 === 0 ? outerR : innerR;
+                        pts += `${cx + r2 * Math.cos(angle)},${cy + r2 * Math.sin(angle)} `;
+                    }
+                    drawing.previewLine.setAttribute('points', pts.trim());
                 }
             };
 
