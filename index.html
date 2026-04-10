@@ -308,7 +308,7 @@
             border-bottom: 12px solid #1a1a1a;
         }
 
-        /* 句読点を右上に配置 */
+        /* 句読点を右上に配置（縦書き用） */
         .cell-content.punctuation {
             position: absolute;
             top: 0;
@@ -323,6 +323,23 @@
             align-items: flex-start;
             line-height: 1;
             transform: translate(30%, -25%);
+        }
+
+        /* 句読点を左下に配置（横書き用） */
+        .cell-content.punctuation-horizontal {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            top: auto;
+            right: auto;
+            width: 50%;
+            height: 50%;
+            font-size: 0.8em;
+            display: flex;
+            justify-content: flex-start;
+            align-items: flex-end;
+            line-height: 1;
+            transform: translate(-30%, 25%);
         }
 
         /* ===== 数字練習（1年生）スタイル ===== */
@@ -1386,7 +1403,13 @@
                 const span = document.createElement('span');
                 span.className = 'cell-content';
                 if (char.length === 1 && PUNCTUATION_CHARS.includes(char)) {
-                    span.classList.add('punctuation');
+                    if (isVertical) {
+                        // 縦書き：句読点を右上に配置
+                        span.classList.add('punctuation');
+                    } else {
+                        // 横書き：句読点を左下に配置
+                        span.classList.add('punctuation-horizontal');
+                    }
                 }
                 span.textContent = char;
                 // 縦書きモード時：括弧類を90度回転させて正しい縦書き向きで表示
