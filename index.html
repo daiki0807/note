@@ -563,6 +563,7 @@
                     <input type="range" id="strokeWidth" min="1" max="20" value="3" class="w-full" oninput="document.getElementById('strokeWidthDisplay').textContent=this.value">
                 </div>
                 <div class="flex gap-1 mt-1">
+                    <button id="undoBtn" onclick="undoDrawing()" class="flex-1 py-1 rounded text-xs font-bold border border-blue-300 text-blue-600 hover:bg-blue-50">一つ戻る</button>
                     <button id="deleteSelected" onclick="deleteSelectedElement()" class="flex-1 py-1 rounded text-xs font-bold border border-orange-300 text-orange-600 hover:bg-orange-50 hidden">選択中を削除</button>
                     <button onclick="clearAllDrawings()" class="flex-1 py-1 rounded text-xs font-bold border border-red-300 text-red-600 hover:bg-red-50">全て消去</button>
                 </div>
@@ -1504,10 +1505,36 @@
             previewLine: null,
             // 選択/移動
             selectedEl: null,
-            selectionRect: null,  // 選択ハイライト用rect
+            selectionRect: null,
             dragOffsetX: 0,
             dragOffsetY: 0,
         };
+
+        // Undoスタック: SVGごとに削除/追加した要素の履歴を管理
+        const undoStack = [];
+
+        function pushUndo(action) {
+            undoStack.push(action);
+            // スタックが多くなりすぎないよう上限を設定
+            if (undoStack.length > 50) undoStack.shift();
+        }
+
+        function undoDrawing() {
+            if (undoStack.length === 0) return;
+            const action = undoStack.pop();
+            if (action.type === 'add') {
+                // 追加した要素を削除
+                action.el.remove();
+            } else if (action.type === 'remove') {
+                // 削除した要素を復元
+                action.svg.appendChild(action.el);
+            } else if (action.type === 'move') {
+                // 移動を元に戻す
+                action.el.setAttribute('transform', action.prevTransform || '');
+                action.el.setAttribute('data-tx', action.prevTx);
+                action.el.setAttribute('data-ty', action.prevTy);
+            }
+        }
 
         function setDrawTool(tool) {
             drawing.tool = tool;
@@ -1615,16 +1642,14 @@
                     path.setAttribute('d', `M ${pos.x} ${pos.y}`);
                     svg.appendChild(path);
                     drawing.currentPath = path;
+                    // Undo用に記録（onEndで確定）
+                    drawing._pendingUndo = { type: 'add', el: path };
                 } else if (drawing.tool === 'eraser') {
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('stroke', '#ffffff');
-                    path.setAttribute('stroke-width', drawing.width * 3);
-                    path.setAttribute('fill', 'none');
-                    path.setAttribute('stroke-linecap', 'round');
-                    path.setAttribute('stroke-linejoin', 'round');
-                    path.setAttribute('d', `M ${pos.x} ${pos.y}`);
-                    svg.appendChild(path);
-                    drawing.currentPath = path;
+                    // 消しゴム：白パスではなく通過点の要素を直接削除する方式
+                    drawing.currentPath = { d: `M ${pos.x} ${pos.y}`, svg };
+                    drawing._erasedEls = [];
+                    // 開始点での当たり判定
+                    _eraserHitTest(svg, pos.x, pos.y);
                 } else if (drawing.tool === 'line') {
                     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     line.setAttribute('stroke', drawing.color);
@@ -1634,6 +1659,7 @@
                     line.setAttribute('x2', pos.x); line.setAttribute('y2', pos.y);
                     svg.appendChild(line);
                     drawing.previewLine = line;
+                    drawing._pendingUndo = { type: 'add', el: line };
                 } else if (drawing.tool === 'circle') {
                     const el = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
                     el.setAttribute('stroke', drawing.color);
@@ -1643,6 +1669,7 @@
                     el.setAttribute('rx', 0); el.setAttribute('ry', 0);
                     svg.appendChild(el);
                     drawing.previewLine = el;
+                    drawing._pendingUndo = { type: 'add', el };
                 } else if (drawing.tool === 'rect') {
                     const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                     el.setAttribute('stroke', drawing.color);
@@ -1652,6 +1679,7 @@
                     el.setAttribute('width', 0); el.setAttribute('height', 0);
                     svg.appendChild(el);
                     drawing.previewLine = el;
+                    drawing._pendingUndo = { type: 'add', el };
                 } else if (drawing.tool === 'triangle' || drawing.tool === 'star') {
                     const el = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
                     el.setAttribute('stroke', drawing.color);
@@ -1661,6 +1689,7 @@
                     el.setAttribute('points', `${pos.x},${pos.y}`);
                     svg.appendChild(el);
                     drawing.previewLine = el;
+                    drawing._pendingUndo = { type: 'add', el };
                 }
             };
 
@@ -1681,9 +1710,12 @@
                     return;
                 }
 
-                if ((drawing.tool === 'free' || drawing.tool === 'eraser') && drawing.currentPath) {
+                if (drawing.tool === 'free' && drawing.currentPath) {
                     const d = drawing.currentPath.getAttribute('d');
                     drawing.currentPath.setAttribute('d', d + ` L ${pos.x} ${pos.y}`);
+                } else if (drawing.tool === 'eraser') {
+                    // 消しゴム：通過点の要素をヒットテストして削除
+                    _eraserHitTest(svg, pos.x, pos.y);
                 } else if (drawing.tool === 'line' && drawing.previewLine) {
                     drawing.previewLine.setAttribute('x2', pos.x);
                     drawing.previewLine.setAttribute('y2', pos.y);
@@ -1726,6 +1758,18 @@
             };
 
             const onEnd = (e) => {
+                // 手書き/図形追加のUndoを確定登録
+                if (drawing._pendingUndo) {
+                    pushUndo(drawing._pendingUndo);
+                    drawing._pendingUndo = null;
+                }
+                // 消しゴムで削除した要素群をまとめてUndo登録
+                if (drawing.tool === 'eraser' && drawing._erasedEls && drawing._erasedEls.length > 0) {
+                    drawing._erasedEls.forEach(el => {
+                        pushUndo({ type: 'remove', el, svg });
+                    });
+                    drawing._erasedEls = null;
+                }
                 drawing.isDrawing = false;
                 drawing.currentPath = null;
                 drawing.previewLine = null;
@@ -1738,6 +1782,33 @@
             svg.addEventListener('touchstart', onStart, { passive: false });
             svg.addEventListener('touchmove', onMove, { passive: false });
             svg.addEventListener('touchend', onEnd);
+        }
+
+        // 消しゴムのヒットテスト: SVGビューポート座標で指定点付近の描画要素を削除
+        function _eraserHitTest(svg, x, y) {
+            const radius = drawing.width * 3;
+            const toDelete = [];
+            for (const child of Array.from(svg.children)) {
+                if (child.classList.contains('sel-highlight')) continue;
+                try {
+                    const bb = child.getBBox();
+                    const tx = parseFloat(child.getAttribute('data-tx') || 0);
+                    const ty = parseFloat(child.getAttribute('data-ty') || 0);
+                    const cx = bb.x + bb.width / 2 + tx;
+                    const cy = bb.y + bb.height / 2 + ty;
+                    // バウンディングボックスとの距離を簡易チェック
+                    const nearX = x >= bb.x + tx - radius && x <= bb.x + bb.width + tx + radius;
+                    const nearY = y >= bb.y + ty - radius && y <= bb.y + bb.height + ty + radius;
+                    if (nearX && nearY) {
+                        toDelete.push(child);
+                    }
+                } catch(e) {}
+            }
+            toDelete.forEach(el => {
+                el.remove();
+                if (!drawing._erasedEls) drawing._erasedEls = [];
+                drawing._erasedEls.push(el);
+            });
         }
 
         function getElementBBox(el) {
@@ -1793,8 +1864,10 @@
         function deleteSelectedElement() {
             if (!drawing.selectedEl) return;
             const el = drawing.selectedEl;
+            const svg = el.closest('svg');
             clearSelection();
             el.remove();
+            pushUndo({ type: 'remove', el, svg });
         }
 
         function addDrawingOverlay(paperDiv) {
