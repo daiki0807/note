@@ -820,7 +820,7 @@
                         const lineData = pageData[lineIndex];
                         for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
                             const t = lineData[charIndex];
-                            const cellDiv = createCell(t.char, t.color);
+                            const cellDiv = createCell(t.char, t.color, true);
                             cellDiv.style.gridColumn = maxLines - lineIndex;
                             cellDiv.style.gridRow = charIndex + 1;
                             gridDiv.appendChild(cellDiv);
@@ -963,6 +963,11 @@
                                 span.classList.add('punctuation');
                             }
                             span.textContent = char;
+                            // 縦書き：括弧類を90度回転させて正しい縦書き向きで表示
+                            if (char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
+                                span.style.display = 'inline-block';
+                                span.style.transform = 'rotate(90deg)';
+                            }
                             if (token?.color) span.style.color = token.color;
                             cellDiv.appendChild(span);
                         }
@@ -1301,6 +1306,26 @@
 
         const PUNCTUATION_CHARS = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
 
+        // 縦書き時に括弧類を縦書き用Unicode文字に変換するマップ
+        const VERTICAL_BRACKET_MAP = {
+            '「': '﹁',
+            '」': '﹂',
+            '『': '﹃',
+            '』': '﹄',
+            '（': '︵',
+            '）': '︶',
+            '〔': '︗',
+            '〕': '︘',
+            '【': '︻',
+            '】': '︼',
+            '〈': '︿',
+            '〉': '﹀',
+            '《': '︽',
+            '》': '︾',
+            '｛': '︷',
+            '｝': '︸',
+        };
+
         // 色タグの定義
         const COLOR_MAP = {
             '赤': '#ef4444',
@@ -1354,7 +1379,7 @@
             renderNotebookWithOverlay();
         }
 
-        function createCell(char, color) {
+        function createCell(char, color, isVertical = false) {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
             if (char && char !== '') {
@@ -1364,6 +1389,11 @@
                     span.classList.add('punctuation');
                 }
                 span.textContent = char;
+                // 縦書きモード時：括弧類を90度回転させて正しい縦書き向きで表示
+                if (isVertical && char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
+                    span.style.display = 'inline-block';
+                    span.style.transform = 'rotate(90deg)';
+                }
                 if (color) span.style.color = color;
                 cellDiv.appendChild(span);
             }
