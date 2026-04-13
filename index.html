@@ -1898,10 +1898,30 @@
         // renderNotebook後にオーバーレイを付与するためにフック
         const _origRender = renderNotebook;
         function renderNotebookWithOverlay() {
+            // 再描画前に各ページの手書き内容を保存
+            const savedDrawings = [];
+            document.querySelectorAll('.a4-paper').forEach((p, i) => {
+                const overlay = p.querySelector('.drawing-overlay');
+                if (overlay) {
+                    // 選択ハイライト以外の要素を保存
+                    const els = Array.from(overlay.children).filter(c => !c.classList.contains('sel-highlight'));
+                    savedDrawings[i] = els.map(el => el.cloneNode(true));
+                }
+            });
+
+            clearSelection();
             _origRender();
-            document.querySelectorAll('.a4-paper').forEach(p => {
+
+            // 再描画後にオーバーレイを追加し、保存した手書き内容を復元
+            document.querySelectorAll('.a4-paper').forEach((p, i) => {
                 if (!p.querySelector('.drawing-overlay')) {
                     addDrawingOverlay(p);
+                }
+                if (savedDrawings[i] && savedDrawings[i].length > 0) {
+                    const overlay = p.querySelector('.drawing-overlay');
+                    if (overlay) {
+                        savedDrawings[i].forEach(el => overlay.appendChild(el));
+                    }
                 }
             });
         }
