@@ -544,6 +544,11 @@
                         <button id="toolTriangle" onclick="setDrawTool('triangle')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">△</button>
                         <button id="toolRect"     onclick="setDrawTool('rect')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">□</button>
                         <button id="toolStar"     onclick="setDrawTool('star')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">★</button>
+                        <button id="toolText"     onclick="setDrawTool('text')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">文字</button>
+                    </div>
+                    <div id="textSizeRow" class="hidden mt-1">
+                        <label class="block text-xs text-gray-600 mb-1">文字サイズ: <span id="textSizeDisplay">32</span>pt</label>
+                        <input type="range" id="textSize" min="12" max="80" value="32" class="w-full" oninput="drawing.textSize=parseInt(this.value);document.getElementById('textSizeDisplay').textContent=this.value">
                     </div>
                 </div>
                 <div class="mb-2">
@@ -1498,6 +1503,7 @@
             tool: 'free',
             color: '#1e3a8a',
             width: 3,
+            textSize: 32,
             isDrawing: false,
             startX: 0,
             startY: 0,
@@ -1550,10 +1556,12 @@
                 active.classList.add('border-purple-500', 'bg-purple-500', 'text-white');
             }
             // カーソル更新
-            const cursor = tool === 'select' ? 'default' : 'crosshair';
+            const cursor = (tool === 'select' || tool === 'text') ? 'default' : 'crosshair';
             document.querySelectorAll('.drawing-overlay').forEach(svg => {
                 svg.style.cursor = cursor;
             });
+            // テキストサイズ行の表示切替
+            document.getElementById('textSizeRow').classList.toggle('hidden', tool !== 'text');
         }
 
         function setDrawColor(color) {
@@ -1605,13 +1613,14 @@
                 drawing.startY = pos.y;
 
                 if (drawing.tool === 'select') {
-                    // クリックした要素を探す（overlayの直接子要素で選択ハイライト以外）
+                    // クリックした要素をSVGの直接子まで遡って取得
                     const hit = document.elementFromPoint(
                         e.touches ? e.touches[0].clientX : e.clientX,
                         e.touches ? e.touches[0].clientY : e.clientY
                     );
-                    const target = (hit && hit !== svg && hit.closest('svg') === svg && !hit.classList.contains('sel-highlight'))
-                        ? hit : null;
+                    let el = hit;
+                    while (el && el.parentElement !== svg) el = el.parentElement;
+                    const target = (el && el !== svg && !el.classList.contains('sel-highlight')) ? el : null;
 
                     // 前の選択を解除
                     clearSelection();
@@ -1629,6 +1638,12 @@
                     } else {
                         document.getElementById('deleteSelected').classList.add('hidden');
                     }
+                    return;
+                }
+
+                if (drawing.tool === 'text') {
+                    drawing.isDrawing = false;
+                    showTextInput(svg, pos, e);
                     return;
                 }
 
@@ -1868,6 +1883,72 @@
             clearSelection();
             el.remove();
             pushUndo({ type: 'remove', el, svg });
+        }
+
+        function showTextInput(svg, pos, e) {
+            // 既存の入力欄を除去
+            const existing = document.getElementById('drawing-text-input');
+            if (existing) existing.remove();
+
+            // SVG座標→画面座標に変換
+            const rect = svg.getBoundingClientRect();
+            const scaleX = rect.width  / svg.viewBox.baseVal.width;
+            const scaleY = rect.height / svg.viewBox.baseVal.height;
+            const screenX = rect.left + pos.x * scaleX;
+            const screenY = rect.top  + pos.y * scaleY;
+
+            const textarea = document.createElement('textarea');
+            textarea.id = 'drawing-text-input';
+            textarea.placeholder = 'テキストを入力（Ctrl+Enterで確定、Escで取消）';
+            textarea.style.cssText = `
+                position: fixed;
+                left: ${screenX}px; top: ${screenY}px;
+                min-width: 120px; min-height: 36px;
+                padding: 4px 6px;
+                font-size: ${drawing.textSize * scaleX}px;
+                color: ${drawing.color};
+                font-family: sans-serif;
+                background: rgba(255,255,255,0.92);
+                border: 2px dashed #6366f1;
+                border-radius: 4px;
+                outline: none; resize: both;
+                z-index: 9999; line-height: 1.4;
+            `;
+            document.body.appendChild(textarea);
+            textarea.focus();
+
+            const commit = () => {
+                const value = textarea.value;
+                textarea.remove();
+                if (!value.trim()) return;
+
+                // SVG <g> にテキストを配置（移動対応のためグループ化）
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.setAttribute('data-tx', '0');
+                g.setAttribute('data-ty', '0');
+
+                const lines = value.split('\n');
+                const lineH = drawing.textSize * 1.4;
+                lines.forEach((line, i) => {
+                    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    t.setAttribute('x', pos.x);
+                    t.setAttribute('y', pos.y + i * lineH);
+                    t.setAttribute('fill', drawing.color);
+                    t.setAttribute('font-size', drawing.textSize);
+                    t.setAttribute('font-family', 'sans-serif');
+                    t.setAttribute('dominant-baseline', 'text-before-edge');
+                    t.textContent = line || ' ';
+                    g.appendChild(t);
+                });
+
+                svg.appendChild(g);
+            };
+
+            textarea.addEventListener('keydown', ev => {
+                if (ev.key === 'Escape') { textarea.remove(); return; }
+                if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') { ev.preventDefault(); commit(); }
+            });
+            textarea.addEventListener('blur', commit);
         }
 
         function addDrawingOverlay(paperDiv) {
