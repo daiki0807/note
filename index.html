@@ -469,6 +469,10 @@
                     <button onclick="wrapSelectedText('緑')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#22c55e">緑</button>
                     <button onclick="wrapSelectedText('橙')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#f97316">橙</button>
                     <button onclick="removeColorTags()" class="px-2 py-1 rounded text-xs font-bold text-gray-700 bg-gray-200 hover:bg-gray-300">色を消す</button>
+                    <button onclick="toggleGroupText()" class="px-2 py-1 ml-2 rounded text-xs font-bold text-gray-700 border border-gray-400 bg-white hover:bg-gray-100 flex items-center">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                        1マスにまとめる
+                    </button>
                 </div>
             </div>
         </div>
@@ -854,7 +858,7 @@
                         const lineData = pageData[row];
                         for (let col = 0; col < cellsPerLine; col++) {
                             const t = lineData[col];
-                            const cellDiv = createCell(t.char, t.color, false, t.sourceIndex);
+                            const cellDiv = createCell(t, false);
                             gridDiv.appendChild(cellDiv);
                         }
                     }
@@ -864,7 +868,7 @@
                         const lineData = pageData[lineIndex];
                         for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
                             const t = lineData[charIndex];
-                            const cellDiv = createCell(t.char, t.color, true, t.sourceIndex);
+                            const cellDiv = createCell(t, true);
                             cellDiv.style.gridColumn = maxLines - lineIndex;
                             cellDiv.style.gridRow = charIndex + 1;
                             gridDiv.appendChild(cellDiv);
@@ -1006,14 +1010,18 @@
                         if (char && char !== '') {
                             const span = document.createElement('span');
                             span.className = 'cell-content';
-                            if (char.length === 1 && kinsokuChars.includes(char)) {
-                                span.classList.add('punctuation');
-                            }
-                            span.textContent = char;
-                            // 縦書き：括弧類を90度回転させて正しい縦書き向きで表示
-                            if (char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
-                                span.style.display = 'inline-block';
-                                span.style.transform = 'rotate(90deg)';
+                            if (token.isGrouped) {
+                                applyGroupedSpanStyle(span, char);
+                            } else {
+                                if (char.length === 1 && kinsokuChars.includes(char)) {
+                                    span.classList.add('punctuation');
+                                }
+                                span.textContent = char;
+                                // 縦書き：括弧類を90度回転させて正しい縦書き向きで表示
+                                if (char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
+                                    span.style.display = 'inline-block';
+                                    span.style.transform = 'rotate(90deg)';
+                                }
                             }
                             if (token?.color) span.style.color = token.color;
                             cellDiv.appendChild(span);
@@ -1216,7 +1224,11 @@
                         span.style.fontSize = `${practiceFontSize}px`;
                         span.style.fontFamily = 'var(--font-kyokasho)';
                         span.style.zIndex = '1';
-                        span.textContent = token.char;
+                        if (token.isGrouped) {
+                            applyGroupedSpanStyle(span, token.char);
+                        } else {
+                            span.textContent = token.char;
+                        }
                         if (token.color) span.style.color = token.color;
                         cellDiv.appendChild(span);
                     }
@@ -1343,7 +1355,11 @@
                         span.style.fontSize = `${practiceFontSize}px`;
                         span.style.fontFamily = 'var(--font-kyokasho)';
                         span.style.zIndex = '1';
-                        span.textContent = token.char;
+                        if (token.isGrouped) {
+                            applyGroupedSpanStyle(span, token.char);
+                        } else {
+                            span.textContent = token.char;
+                        }
                         if (token.color) span.style.color = token.color;
                         cellDiv.appendChild(span);
                     }
@@ -1398,16 +1414,31 @@
             const re = /\[([^:]+):([^\]]+)\]/g;
             let last = 0, m;
             while ((m = re.exec(text)) !== null) {
-                // タグ前の通常文字
                 for (let i = last; i < m.index; i++) {
                     result.push({ char: text[i], sourceIndex: startIndex + i });
                 }
                 const colorName = m[1];
                 const colorContent = m[2];
-                const color = COLOR_MAP[colorName];
+                
+                let isGroup = false;
+                let actualColorName = colorName;
+                if (colorName.endsWith('組')) {
+                    isGroup = true;
+                    actualColorName = colorName.replace('組', '');
+                } else if (colorName === '組') {
+                    isGroup = true;
+                    actualColorName = '';
+                }
+                
+                const color = COLOR_MAP[actualColorName];
                 let contentStart = m.index + 1 + colorName.length + 1;
-                for (let j = 0; j < colorContent.length; j++) {
-                    result.push({ char: colorContent[j], color: color || null, sourceIndex: startIndex + contentStart + j });
+                
+                if (isGroup) {
+                    result.push({ char: colorContent, color: color || null, sourceIndex: startIndex + contentStart, isGrouped: true });
+                } else {
+                    for (let j = 0; j < colorContent.length; j++) {
+                        result.push({ char: colorContent[j], color: color || null, sourceIndex: startIndex + contentStart + j });
+                    }
                 }
                 last = re.lastIndex;
             }
@@ -1437,31 +1468,83 @@
             renderNotebookWithOverlay();
         }
 
-        function createCell(char, color, isVertical = false, sourceIndex = -1) {
+        function toggleGroupText() {
+            const ta = elements.input;
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            if (start === end) return;
+            let selected = ta.value.slice(start, end);
+            
+            const m = selected.match(/^\[([^:]+):([^\]]+)\]$/);
+            if (m) {
+                let colorName = m[1];
+                if (colorName.endsWith('組')) {
+                    colorName = colorName.replace('組', '');
+                } else {
+                    colorName += '組';
+                }
+                const wrapped = (colorName === '') ? m[2] : `[${colorName}:${m[2]}]`;
+                ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
+                ta.selectionStart = start;
+                ta.selectionEnd = start + wrapped.length;
+            } else {
+                const wrapped = `[組:${selected}]`;
+                ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
+                ta.selectionStart = start;
+                ta.selectionEnd = start + wrapped.length;
+            }
+            handleTextInput();
+            renderNotebookWithOverlay();
+        }
+
+        function applyGroupedSpanStyle(span, text) {
+            let hankaku = text.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
+                return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
+            });
+            hankaku = hankaku.replace(/　/g, ' ');
+            span.textContent = hankaku;
+            const len = hankaku.length;
+            if (len >= 2) {
+                let scale = 1;
+                if (len === 2) scale = 0.8;
+                else if (len === 3) scale = 0.55;
+                else scale = 1.8 / len;
+                span.style.display = 'inline-block';
+                span.style.whiteSpace = 'nowrap';
+                span.style.transform = `scaleX(${scale})`;
+                span.style.transformOrigin = 'center';
+            }
+        }
+
+        function createCell(token, isVertical = false) {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
-            if (sourceIndex >= 0) {
-                cellDiv.dataset.sourceIndex = sourceIndex;
+            if (token.sourceIndex >= 0) {
+                cellDiv.dataset.sourceIndex = token.sourceIndex;
             }
-            if (char && char !== '') {
+            if (token.char && token.char !== '') {
                 const span = document.createElement('span');
                 span.className = 'cell-content';
-                if (char.length === 1 && PUNCTUATION_CHARS.includes(char)) {
-                    if (isVertical) {
-                        // 縦書き：句読点を右上に配置
-                        span.classList.add('punctuation');
-                    } else {
-                        // 横書き：句読点を左下に配置
-                        span.classList.add('punctuation-horizontal');
+                
+                if (token.isGrouped) {
+                    applyGroupedSpanStyle(span, token.char);
+                } else {
+                    let char = token.char;
+                    if (char.length === 1 && PUNCTUATION_CHARS.includes(char)) {
+                        if (isVertical) {
+                            span.classList.add('punctuation');
+                        } else {
+                            span.classList.add('punctuation-horizontal');
+                        }
+                    }
+                    span.textContent = char;
+                    if (isVertical && char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
+                        span.style.display = 'inline-block';
+                        span.style.transform = 'rotate(90deg)';
                     }
                 }
-                span.textContent = char;
-                // 縦書きモード時：括弧類を90度回転させて正しい縦書き向きで表示
-                if (isVertical && char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
-                    span.style.display = 'inline-block';
-                    span.style.transform = 'rotate(90deg)';
-                }
-                if (color) span.style.color = color;
+                
+                if (token.color) span.style.color = token.color;
                 cellDiv.appendChild(span);
             }
             return cellDiv;
