@@ -136,6 +136,13 @@
             z-index: 10;
         }
 
+        .active-cell-highlight {
+            background-color: rgba(253, 224, 71, 0.5) !important;
+            outline: 2px solid #eab308;
+            outline-offset: -2px;
+            z-index: 5;
+        }
+
         @media print {
             html, body {
                 background-color: white !important;
@@ -438,8 +445,11 @@
         <h1 class="text-xl font-bold mb-4 md:mb-6 text-gray-800">ノート見本作成ツール</h1>
 
         <div class="mb-5">
-            <label class="block text-sm font-medium text-gray-700 mb-1">見本テキスト</label>
-            <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
+            <div class="flex justify-between items-end mb-1">
+                <label class="block text-sm font-medium text-gray-700">見本テキスト</label>
+                <span id="charCountStatus" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold">現在: -行目 / -文字</span>
+            </div>
+            <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm font-mono focus:ring-blue-500 focus:border-blue-500" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
 かきくけこ
 
 さしすせそ</textarea>
@@ -751,11 +761,12 @@
             const lines = text.split('\n');
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
-            const EMPTY_TOKEN = { char: '', color: null };
+            const EMPTY_TOKEN = { char: '', color: null, sourceIndex: -1 };
 
+            let currentAbsIndex = 0;
             for (const line of lines) {
                 let currentLineTokens = [];
-                const tokens = parseColoredText(line);
+                const tokens = parseColoredText(line, currentAbsIndex);
 
                 for (let c = 0; c < tokens.length; c++) {
                     const token = tokens[c];
@@ -764,7 +775,7 @@
                     if (currentLineTokens.length === 0 && gridData.length > 0 && kinsokuChars.includes(token.char)) {
                         const previousLine = gridData[gridData.length - 1];
                         const last = previousLine[previousLine.length - 1];
-                        previousLine[previousLine.length - 1] = { char: last.char + token.char, color: last.color };
+                        previousLine[previousLine.length - 1] = { char: last.char + token.char, color: last.color, sourceIndex: last.sourceIndex };
                         continue;
                     }
 
@@ -781,6 +792,7 @@
                     }
                     gridData.push(currentLineTokens);
                 }
+                currentAbsIndex += line.length + 1;
             }
 
             if (gridData.length === 0) {
@@ -832,7 +844,7 @@
                         const lineData = pageData[row];
                         for (let col = 0; col < cellsPerLine; col++) {
                             const t = lineData[col];
-                            const cellDiv = createCell(t.char, t.color);
+                            const cellDiv = createCell(t.char, t.color, false, t.sourceIndex);
                             gridDiv.appendChild(cellDiv);
                         }
                     }
@@ -842,7 +854,7 @@
                         const lineData = pageData[lineIndex];
                         for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
                             const t = lineData[charIndex];
-                            const cellDiv = createCell(t.char, t.color, true);
+                            const cellDiv = createCell(t.char, t.color, true, t.sourceIndex);
                             cellDiv.style.gridColumn = maxLines - lineIndex;
                             cellDiv.style.gridRow = charIndex + 1;
                             gridDiv.appendChild(cellDiv);
@@ -888,17 +900,18 @@
             const lines = text.split('\n');
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
-            const EMPTY_G = { char: '', color: null };
+            const EMPTY_G = { char: '', color: null, sourceIndex: -1 };
 
+            let currentAbsIndex = 0;
             for (const line of lines) {
                 let currentLineTokens = [];
-                const tokens = parseColoredText(line);
+                const tokens = parseColoredText(line, currentAbsIndex);
                 for (let c = 0; c < tokens.length; c++) {
                     const token = tokens[c];
                     if (currentLineTokens.length === 0 && gridData.length > 0 && kinsokuChars.includes(token.char)) {
                         const previousLine = gridData[gridData.length - 1];
                         const last = previousLine[previousLine.length - 1];
-                        previousLine[previousLine.length - 1] = { char: last.char + token.char, color: last.color };
+                        previousLine[previousLine.length - 1] = { char: last.char + token.char, color: last.color, sourceIndex: last.sourceIndex };
                         continue;
                     }
                     currentLineTokens.push(token);
@@ -911,6 +924,7 @@
                     while (currentLineTokens.length < CELLS_PER_LINE) currentLineTokens.push(EMPTY_G);
                     gridData.push(currentLineTokens);
                 }
+                currentAbsIndex += line.length + 1;
             }
             if (gridData.length === 0) {
                 gridData.push(Array(CELLS_PER_LINE).fill(EMPTY_G));
@@ -977,6 +991,7 @@
                         if (charIndex === CELLS_PER_LINE - 1) cellDiv.classList.add('col-border-right');
 
                         const token = lineData[charIndex];
+                        if (token && token.sourceIndex >= 0) cellDiv.dataset.sourceIndex = token.sourceIndex;
                         const char = token?.char || '';
                         if (char && char !== '') {
                             const span = document.createElement('span');
@@ -1163,14 +1178,16 @@
             // テキストをパース（横書き・色対応）
             const lines = text.split('\n');
             const practiceData = [];
+            let currentAbsIndex = 0;
             for (const line of lines) {
                 let cur = [];
-                for (const token of parseColoredText(line)) {
+                for (const token of parseColoredText(line, currentAbsIndex)) {
                     cur.push(token);
                     if (cur.length === COLS) { practiceData.push(cur); cur = []; }
                 }
-                while (cur.length < COLS) cur.push({ char: '', color: null });
+                while (cur.length < COLS) cur.push({ char: '', color: null, sourceIndex: -1 });
                 practiceData.push(cur);
+                currentAbsIndex += line.length + 1;
             }
 
             // 2行目以降: 練習マス（十字リーダー）
@@ -1181,7 +1198,8 @@
                 for (let col = 0; col < COLS; col++) {
                     const cellDiv = document.createElement('div');
                     cellDiv.className = 'np-cell practice-cell';
-                    const token = lineData[col] || { char: '', color: null };
+                    const token = lineData[col] || { char: '', color: null, sourceIndex: -1 };
+                    if (token.sourceIndex >= 0) cellDiv.dataset.sourceIndex = token.sourceIndex;
                     if (token.char) {
                         const span = document.createElement('span');
                         span.className = 'cell-content';
@@ -1285,16 +1303,19 @@
             // テキストを横書きでパース（2行目以降・色対応）
             const lines = text.split('\n');
             const practiceData = [];
+            let currentAbsIndex = 0;
             for (const line of lines) {
                 let cur = [];
-                for (const token of parseColoredText(line)) {
+                const tokens = parseColoredText(line, currentAbsIndex);
+                for (const token of tokens) {
                     cur.push(token);
                     if (cur.length === COLS) { practiceData.push(cur); cur = []; }
                 }
-                if (cur.length > 0 || parseColoredText(line).length === 0) {
-                    while (cur.length < COLS) cur.push({ char: '', color: null });
+                if (cur.length > 0 || tokens.length === 0) {
+                    while (cur.length < COLS) cur.push({ char: '', color: null, sourceIndex: -1 });
                     practiceData.push(cur);
                 }
+                currentAbsIndex += line.length + 1;
             }
 
             // 練習行
@@ -1304,7 +1325,8 @@
                 for (let col = 0; col < COLS; col++) {
                     const cellDiv = document.createElement('div');
                     cellDiv.className = 'np-cell practice-cell';
-                    const token = lineData[col] || { char: '', color: null };
+                    const token = lineData[col] || { char: '', color: null, sourceIndex: -1 };
+                    if (token.sourceIndex >= 0) cellDiv.dataset.sourceIndex = token.sourceIndex;
                     if (token.char) {
                         const span = document.createElement('span');
                         span.className = 'cell-content';
@@ -1361,24 +1383,26 @@
 
         // テキストを色タグ付きで1文字ずつに分解する
         // 例: "あ[赤:い]う" → [{char:'あ'}, {char:'い', color:'#ef4444'}, {char:'う'}]
-        function parseColoredText(text) {
+        function parseColoredText(text, startIndex = 0) {
             const result = [];
             const re = /\[([^:]+):([^\]]+)\]/g;
             let last = 0, m;
             while ((m = re.exec(text)) !== null) {
                 // タグ前の通常文字
-                for (const ch of Array.from(text.slice(last, m.index))) {
-                    result.push({ char: ch });
+                for (let i = last; i < m.index; i++) {
+                    result.push({ char: text[i], sourceIndex: startIndex + i });
                 }
                 const colorName = m[1];
+                const colorContent = m[2];
                 const color = COLOR_MAP[colorName];
-                for (const ch of Array.from(m[2])) {
-                    result.push({ char: ch, color: color || null });
+                let contentStart = m.index + 1 + colorName.length + 1;
+                for (let j = 0; j < colorContent.length; j++) {
+                    result.push({ char: colorContent[j], color: color || null, sourceIndex: startIndex + contentStart + j });
                 }
                 last = re.lastIndex;
             }
-            for (const ch of Array.from(text.slice(last))) {
-                result.push({ char: ch });
+            for (let i = last; i < text.length; i++) {
+                result.push({ char: text[i], sourceIndex: startIndex + i });
             }
             return result;
         }
@@ -1403,9 +1427,12 @@
             renderNotebookWithOverlay();
         }
 
-        function createCell(char, color, isVertical = false) {
+        function createCell(char, color, isVertical = false, sourceIndex = -1) {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
+            if (sourceIndex >= 0) {
+                cellDiv.dataset.sourceIndex = sourceIndex;
+            }
             if (char && char !== '') {
                 const span = document.createElement('span');
                 span.className = 'cell-content';
@@ -2007,7 +2034,81 @@
                     }
                 }
             });
+            
+            updateCharStatus();
+            updateCursorHighlight();
         }
+
+        // ===== 補助テキスト/カーソル関連ロジック =====
+        function getMaxCharsPerLine() {
+            const tid = elements.templateSelect.value;
+            const tpl = TEMPLATES[tid];
+            if (tpl?.isGenko) return 20;
+            if (tpl?.isNumberPractice) return 10;
+            if (tpl?.isMath17) return 12;
+            if (tpl?.isMath22) return 12;
+            
+            const direction = Array.from(elements.direction).find(radio => radio.checked).value;
+            const colsCount = parseInt(elements.cols.value) || 10;
+            const rowsCount = parseInt(elements.rows.value) || 7;
+            return direction === 'horizontal' ? colsCount : rowsCount;
+        }
+
+        function updateCharStatus() {
+            const statusEl = document.getElementById('charCountStatus');
+            if (!statusEl) return;
+            
+            const text = elements.input.value;
+            const pos = elements.input.selectionStart;
+            const textBeforeCursor = text.slice(0, pos);
+            const lines = textBeforeCursor.split('\n');
+            const currentLineNumber = lines.length;
+            const currentLineTextBeforeCursor = lines[lines.length - 1];
+            
+            const parsed = parseColoredText(currentLineTextBeforeCursor, 0);
+            const logicalCharCount = parsed.length;
+            const maxChars = getMaxCharsPerLine();
+            
+            statusEl.innerHTML = `現在: <strong>${currentLineNumber}</strong>行目 / <strong>${logicalCharCount}</strong>文字 (改行まで: 残り<strong>${Math.max(0, maxChars - logicalCharCount)}</strong>文字)`;
+        }
+
+        function updateCursorHighlight() {
+            document.querySelectorAll('.active-cell-highlight').forEach(el => el.classList.remove('active-cell-highlight'));
+            let pos = elements.input.selectionStart;
+            let target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"]`);
+            if (!target && pos > 0) {
+                // Seek backwards for the closest character cell
+                for (let i = pos - 1; i >= 0; i--) {
+                    target = document.querySelector(`.cell[data-source-index="${i}"], .np-cell[data-source-index="${i}"]`);
+                    if (target) break;
+                }
+            }
+            if (target) {
+                target.classList.add('active-cell-highlight');
+                // Ensure highlight is visible over background but behind content if needed
+                // It's handled by css rules.
+            }
+        }
+
+        document.addEventListener('selectionchange', () => {
+            if (document.activeElement === elements.input) {
+                updateCharStatus();
+                updateCursorHighlight();
+            }
+        });
+
+        elements.scaleWrapper.addEventListener('pointerup', (e) => {
+            if (drawing.active) return;
+            
+            const cell = e.target.closest('.cell, .np-cell');
+            if (cell && cell.dataset.sourceIndex) {
+                const index = parseInt(cell.dataset.sourceIndex, 10);
+                elements.input.focus();
+                elements.input.setSelectionRange(index, index);
+                updateCharStatus();
+                updateCursorHighlight();
+            }
+        });
 
         // ===== イベントリスナー =====
         elements.input.addEventListener('input', renderNotebookWithOverlay);
