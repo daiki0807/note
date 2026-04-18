@@ -455,20 +455,20 @@
                     <span id="charCountStatus" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold">現在: -行目 / -文字</span>
                 </div>
             </div>
-            <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm font-mono focus:ring-blue-500 focus:border-blue-500" style="line-height: 1.6; letter-spacing: 0.1em;" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
+            <div id="inputText" contenteditable="true" class="w-full border border-gray-300 rounded-md p-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 overflow-y-auto" style="height: 140px; line-height: 1.6; letter-spacing: 0.1em; white-space: pre-wrap; word-break: break-all;">あいうえお
 かきくけこ
 
-さしすせそ</textarea>
+さしすせそ</div>
             <p class="text-xs text-gray-500 mt-1">※改行すると次の行に移動します。</p>
             <div class="mt-2">
-                <p class="text-xs text-gray-500 mb-1">文字色（テキストを選択してボタンを押す）</p>
+                <p class="text-xs text-gray-500 mb-1">文字装飾（テキストを選択してボタンを押す）</p>
                 <div class="flex gap-1 flex-wrap">
-                    <button onclick="wrapSelectedText('赤')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#ef4444">赤</button>
-                    <button onclick="wrapSelectedText('青')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#3b82f6">青</button>
-                    <button onclick="wrapSelectedText('黄')" class="px-2 py-1 rounded text-xs font-bold text-gray-800" style="background:#facc15">黄</button>
-                    <button onclick="wrapSelectedText('緑')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#22c55e">緑</button>
-                    <button onclick="wrapSelectedText('橙')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#f97316">橙</button>
-                    <button onclick="removeColorTags()" class="px-2 py-1 rounded text-xs font-bold text-gray-700 bg-gray-200 hover:bg-gray-300">色を消す</button>
+                    <button onclick="wrapSelectedText('#ef4444')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#ef4444">赤</button>
+                    <button onclick="wrapSelectedText('#3b82f6')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#3b82f6">青</button>
+                    <button onclick="wrapSelectedText('#facc15')" class="px-2 py-1 rounded text-xs font-bold text-gray-800" style="background:#facc15">黄</button>
+                    <button onclick="wrapSelectedText('#22c55e')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#22c55e">緑</button>
+                    <button onclick="wrapSelectedText('#f97316')" class="px-2 py-1 rounded text-xs font-bold text-white" style="background:#f97316">橙</button>
+                    <button onclick="removeColorTags()" class="px-2 py-1 rounded text-xs font-bold text-gray-700 bg-gray-200 hover:bg-gray-300">装飾を消す</button>
                     <button onclick="toggleGroupText()" class="px-2 py-1 ml-2 rounded text-xs font-bold text-gray-700 border border-gray-400 bg-white hover:bg-gray-100 flex items-center">
                         <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
                         1マスにまとめる
@@ -647,7 +647,7 @@
             if (savedState) {
                 try {
                     const state = JSON.parse(savedState);
-                    if (state.text !== undefined) elements.input.value = state.text;
+                    if (state.text !== undefined) elements.input.innerHTML = state.text;
                     if (state.direction) {
                         elements.direction.forEach(radio => {
                             radio.checked = (radio.value === state.direction);
@@ -674,7 +674,7 @@
         function saveState() {
             const currentDir = Array.from(elements.direction).find(r => r.checked).value;
             const state = {
-                text: elements.input.value,
+                text: elements.input.innerHTML,
                 direction: currentDir,
                 cols: elements.cols.value,
                 rows: elements.rows.value,
@@ -771,19 +771,18 @@
             const cellSizePx = cellSizeMM * 3.7795; // フォントサイズ計算用
             const fontSize = cellSizePx * fontRatio;
 
-            // テキストのパースとマス割り当てロジック（色対応）
-            const lines = text.split('\n');
+            // テキストのパースとマス割り当てロジック（リッチエディタ対応）
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
             const EMPTY_TOKEN = { char: '', color: null, sourceIndex: -1 };
 
-            let currentAbsIndex = 0;
-            for (const line of lines) {
-                let currentLineTokens = [];
-                const tokens = parseColoredText(line, currentAbsIndex);
+            const parsedLines = getTokensFromEditor(elements.input);
 
-                for (let c = 0; c < tokens.length; c++) {
-                    const token = tokens[c];
+            for (const lineTokens of parsedLines) {
+                let currentLineTokens = [];
+
+                for (let c = 0; c < lineTokens.length; c++) {
+                    const token = lineTokens[c];
 
                     // 禁則処理
                     if (currentLineTokens.length === 0 && gridData.length > 0 && kinsokuChars.includes(token.char)) {
@@ -800,13 +799,12 @@
                     }
                 }
 
-                if (currentLineTokens.length > 0 || tokens.length === 0) {
+                if (currentLineTokens.length > 0 || lineTokens.length === 0) {
                     while (currentLineTokens.length < cellsPerLine) {
                         currentLineTokens.push(EMPTY_TOKEN);
                     }
                     gridData.push(currentLineTokens);
                 }
-                currentAbsIndex += line.length + 1;
             }
 
             if (gridData.length === 0) {
@@ -1407,93 +1405,113 @@
             '橙': '#f97316',
         };
 
-        // テキストを色タグ付きで1文字ずつに分解する
-        // 例: "あ[赤:い]う" → [{char:'あ'}, {char:'い', color:'#ef4444'}, {char:'う'}]
-        function parseColoredText(text, startIndex = 0) {
-            const result = [];
-            const re = /\[([^:]+):([^\]]+)\]/g;
-            let last = 0, m;
-            while ((m = re.exec(text)) !== null) {
-                for (let i = last; i < m.index; i++) {
-                    result.push({ char: text[i], sourceIndex: startIndex + i });
-                }
-                const colorName = m[1];
-                const colorContent = m[2];
-                
-                let isGroup = false;
-                let actualColorName = colorName;
-                if (colorName.endsWith('組')) {
-                    isGroup = true;
-                    actualColorName = colorName.replace('組', '');
-                } else if (colorName === '組') {
-                    isGroup = true;
-                    actualColorName = '';
-                }
-                
-                const color = COLOR_MAP[actualColorName];
-                let contentStart = m.index + 1 + colorName.length + 1;
-                
-                if (isGroup) {
-                    result.push({ char: colorContent, color: color || null, sourceIndex: startIndex + contentStart, isGrouped: true });
-                } else {
-                    for (let j = 0; j < colorContent.length; j++) {
-                        result.push({ char: colorContent[j], color: color || null, sourceIndex: startIndex + contentStart + j });
-                    }
-                }
-                last = re.lastIndex;
-            }
-            for (let i = last; i < text.length; i++) {
-                result.push({ char: text[i], sourceIndex: startIndex + i });
-            }
-            return result;
+        // ==== WYSIWYG エディタ解析ロジック ====
+        function rgbToHex(rgb) {
+            if (!rgb || rgb === 'rgba(0, 0, 0, 0)') return null;
+            const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (!match) return null;
+            return "#" + (1 << 24 | parseInt(match[1]) << 16 | parseInt(match[2]) << 8 | parseInt(match[3])).toString(16).slice(1);
         }
 
-        // テキストエリアの選択範囲を色タグで囲む
-        function wrapSelectedText(colorName) {
-            const ta = elements.input;
-            const start = ta.selectionStart;
-            const end = ta.selectionEnd;
-            if (start === end) return;
-            const selected = ta.value.slice(start, end);
-            const wrapped = `[${colorName}:${selected}]`;
-            ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
-            ta.selectionStart = start;
-            ta.selectionEnd = start + wrapped.length;
+        function getTokensFromEditor(editor) {
+            let tokens = [];
+            let sourceIndex = 0;
+
+            function traverse(node, currentColor, currentGroup) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    let val = node.nodeValue;
+                    if (!val) return;
+                    for (let i = 0; i < val.length; i++) {
+                        let color = currentColor;
+                        if (color === '#000000' || String(color).match(/inherit|initial/)) color = null;
+                        tokens.push({ char: val[i], color: color, isGrouped: currentGroup, sourceIndex: sourceIndex });
+                        sourceIndex++;
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    let color = currentColor;
+                    let group = currentGroup;
+                    
+                    const style = window.getComputedStyle(node);
+                    if (node.style && node.style.color) {
+                        const hex = rgbToHex(node.style.color) || rgbToHex(style.color);
+                        if (hex && hex !== '#000000') color = hex;
+                    }
+                    if (node.nodeName === 'FONT' && node.color) {
+                        color = rgbToHex(node.color) || node.color;
+                    }
+                    
+                    if (node.nodeName === 'U' || style.textDecorationLine === 'underline' || style.textDecoration.includes('underline')) {
+                        group = true;
+                    }
+
+                    const isBlock = style.display === 'block';
+                    if (node !== editor && isBlock) {
+                        if (tokens.length > 0 && tokens[tokens.length-1].char !== '\n') {
+                            tokens.push({ char: '\n', color: null, isGrouped: false, sourceIndex: sourceIndex });
+                            sourceIndex++;
+                        }
+                    }
+
+                    if (node.nodeName === 'BR') {
+                        tokens.push({ char: '\n', color: null, isGrouped: false, sourceIndex: sourceIndex });
+                        sourceIndex++;
+                    } else {
+                        for (let child of node.childNodes) {
+                            traverse(child, color, group);
+                        }
+                    }
+                }
+            }
+            traverse(editor, null, false);
+            
+            const finalLines = [];
+            let currentLine = [];
+            let i = 0;
+            while(i < tokens.length) {
+                if (tokens[i].char === '\n') {
+                    finalLines.push(currentLine);
+                    currentLine = [];
+                    i++;
+                    continue;
+                }
+                
+                if (tokens[i].isGrouped) {
+                    let str = tokens[i].char;
+                    let groupColor = tokens[i].color;
+                    let groupStartIdx = tokens[i].sourceIndex;
+                    i++;
+                    while (i < tokens.length && tokens[i].isGrouped && tokens[i].char !== '\n') {
+                        str += tokens[i].char;
+                        i++;
+                    }
+                    currentLine.push({ char: str, color: groupColor, isGrouped: true, sourceIndex: groupStartIdx });
+                } else {
+                    currentLine.push(tokens[i]);
+                    i++;
+                }
+            }
+            finalLines.push(currentLine);
+            return finalLines;
+        }
+
+        // ==== UI用エディタ操作 ====
+        function wrapSelectedText(colorHex) {
+            elements.input.focus();
+            document.execCommand('styleWithCSS', false, true);
+            document.execCommand('foreColor', false, colorHex);
             renderNotebookWithOverlay();
         }
 
-        // 色タグをすべて除去する
         function removeColorTags() {
-            elements.input.value = elements.input.value.replace(/\[([^:]+):([^\]]+)\]/g, '$2');
+            elements.input.focus();
+            document.execCommand('removeFormat', false, null);
             renderNotebookWithOverlay();
         }
 
         function toggleGroupText() {
-            const ta = elements.input;
-            const start = ta.selectionStart;
-            const end = ta.selectionEnd;
-            if (start === end) return;
-            let selected = ta.value.slice(start, end);
-            
-            const m = selected.match(/^\[([^:]+):([^\]]+)\]$/);
-            if (m) {
-                let colorName = m[1];
-                if (colorName.endsWith('組')) {
-                    colorName = colorName.replace('組', '');
-                } else {
-                    colorName += '組';
-                }
-                const wrapped = (colorName === '') ? m[2] : `[${colorName}:${m[2]}]`;
-                ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
-                ta.selectionStart = start;
-                ta.selectionEnd = start + wrapped.length;
-            } else {
-                const wrapped = `[組:${selected}]`;
-                ta.value = ta.value.slice(0, start) + wrapped + ta.value.slice(end);
-                ta.selectionStart = start;
-                ta.selectionEnd = start + wrapped.length;
-            }
-            handleTextInput();
+            elements.input.focus();
+            document.execCommand('styleWithCSS', false, true);
+            document.execCommand('underline', false, null);
             renderNotebookWithOverlay();
         }
 
@@ -2151,18 +2169,28 @@
             const statusEl = document.getElementById('charCountStatus');
             if (!statusEl) return;
             
-            const text = elements.input.value;
-            const pos = elements.input.selectionStart;
-            const textBeforeCursor = text.slice(0, pos);
-            const lines = textBeforeCursor.split('\n');
+            // WYSIWYGでの行数・文字数取得（簡易版: プレーンテキストで計算）
+            const text = elements.input.innerText || "";
+            const lines = text.split('\n');
+            const logicalCharCount = lines[lines.length - 1].length;
             const currentLineNumber = lines.length;
-            const currentLineTextBeforeCursor = lines[lines.length - 1];
-            
-            const parsed = parseColoredText(currentLineTextBeforeCursor, 0);
-            const logicalCharCount = parsed.length;
             const maxChars = getMaxCharsPerLine();
             
-            statusEl.innerHTML = `現在: <strong>${currentLineNumber}</strong>行目 / <strong>${logicalCharCount}</strong>文字 (改行まで: 残り<strong>${Math.max(0, maxChars - logicalCharCount)}</strong>文字)`;
+            statusEl.innerHTML = `現在: <strong>${currentLineNumber}</strong>行目 / <strong>${logicalCharCount}</strong>マス消費 (改行まで: 残り<strong>${Math.max(0, maxChars - logicalCharCount)}</strong>マス)`;
+        }
+
+        // キャレット計算用ヘルパー
+        function getCaretCharacterOffsetWithin(element) {
+            let caretOffset = 0;
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                const preCaretRange = range.cloneRange();
+                preCaretRange.selectNodeContents(element);
+                preCaretRange.setEnd(range.endContainer, range.endOffset);
+                caretOffset = preCaretRange.toString().length;
+            }
+            return caretOffset;
         }
 
         function updateCursorHighlight() {
@@ -2171,10 +2199,9 @@
             const enableHighlightBtn = document.getElementById('enableHighlight');
             if (enableHighlightBtn && !enableHighlightBtn.checked) return;
 
-            let pos = elements.input.selectionStart;
+            let pos = getCaretCharacterOffsetWithin(elements.input);
             let target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"]`);
             if (!target && pos > 0) {
-                // Seek backwards for the closest character cell
                 for (let i = pos - 1; i >= 0; i--) {
                     target = document.querySelector(`.cell[data-source-index="${i}"], .np-cell[data-source-index="${i}"]`);
                     if (target) break;
@@ -2182,13 +2209,11 @@
             }
             if (target) {
                 target.classList.add('active-cell-highlight');
-                // Ensure highlight is visible over background but behind content if needed
-                // It's handled by css rules.
             }
         }
 
         document.addEventListener('selectionchange', () => {
-            if (document.activeElement === elements.input) {
+            if (elements.input.contains(document.activeElement) || document.activeElement === elements.input) {
                 updateCharStatus();
                 updateCursorHighlight();
             }
@@ -2201,7 +2226,40 @@
             if (cell && cell.dataset.sourceIndex) {
                 const index = parseInt(cell.dataset.sourceIndex, 10);
                 elements.input.focus();
-                elements.input.setSelectionRange(index, index);
+                
+                // ContentEditableのキャレットを復元
+                let sel = window.getSelection();
+                let range = document.createRange();
+                let currentOffset = 0;
+                let targetNode = null;
+                let targetOffset = 0;
+                
+                function traverseCaret(node) {
+                    if (targetNode) return;
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const len = node.nodeValue.length;
+                        if (currentOffset + len >= index) {
+                            targetNode = node;
+                            targetOffset = index - currentOffset;
+                        } else {
+                            currentOffset += len;
+                        }
+                    } else {
+                        if (node.nodeName === 'BR') currentOffset += 1;
+                        for (let child of node.childNodes) traverseCaret(child);
+                    }
+                }
+                traverseCaret(elements.input);
+                
+                if (targetNode) {
+                    try {
+                        range.setStart(targetNode, targetOffset);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    } catch(err) {} // ignore range errors for safety
+                }
+                
                 updateCharStatus();
                 updateCursorHighlight();
             }
@@ -2227,25 +2285,30 @@
         elements.input.addEventListener('compositionstart', () => { isComposing = true; });
         elements.input.addEventListener('compositionend', () => { 
             isComposing = false;
-            handleTextInput();
+            // 確定時にキャレット直前のテキストノードを全角化
+            applyZenkakuCurrentNode();
+            renderNotebookWithOverlay();
         });
 
-        function handleTextInput() {
-            if (isComposing) return;
-            const originalPos = elements.input.selectionStart;
-            const originalVal = elements.input.value;
-            const converted = toZenkaku(originalVal);
-            if (originalVal !== converted) {
-                elements.input.value = converted;
-                elements.input.setSelectionRange(originalPos, originalPos);
+        function applyZenkakuCurrentNode() {
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                const node = sel.focusNode;
+                if (node && node.nodeType === Node.TEXT_NODE) {
+                    const origVal = node.nodeValue;
+                    const converted = toZenkaku(origVal);
+                    if (origVal !== converted) {
+                        const offset = sel.focusOffset;
+                        node.nodeValue = converted;
+                        try { sel.collapse(node, offset); } catch(e) {}
+                    }
+                }
             }
-            renderNotebookWithOverlay();
         }
 
         elements.input.addEventListener('input', () => {
             if (!isComposing) {
-                handleTextInput();
-            } else {
+                applyZenkakuCurrentNode();
                 renderNotebookWithOverlay();
             }
         });
