@@ -447,7 +447,13 @@
         <div class="mb-5">
             <div class="flex justify-between items-end mb-1">
                 <label class="block text-sm font-medium text-gray-700">見本テキスト</label>
-                <span id="charCountStatus" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold">現在: -行目 / -文字</span>
+                <div class="flex items-center space-x-3">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="enableHighlight" class="form-checkbox h-3 w-3 text-blue-600" checked>
+                        <span class="ml-1 text-xs text-gray-600 font-bold">カーソル同期</span>
+                    </label>
+                    <span id="charCountStatus" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold">現在: -行目 / -文字</span>
+                </div>
             </div>
             <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm font-mono focus:ring-blue-500 focus:border-blue-500" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
 かきくけこ
@@ -652,6 +658,9 @@
                         elements.fontSizeRatio.value = state.fontSizeRatio;
                         elements.fontSizeDisplay.textContent = state.fontSizeRatio;
                     }
+                    if (state.enableHighlight !== undefined && document.getElementById('enableHighlight')) {
+                        document.getElementById('enableHighlight').checked = state.enableHighlight;
+                    }
                 } catch (e) {
                     console.error("ストレージ読み込みエラー:", e);
                 }
@@ -668,7 +677,8 @@
                 style: elements.style.value,
                 showHeader: elements.showHeader.checked,
                 templateSelect: elements.templateSelect.value,
-                fontSizeRatio: elements.fontSizeRatio.value
+                fontSizeRatio: elements.fontSizeRatio.value,
+                enableHighlight: document.getElementById('enableHighlight') ? document.getElementById('enableHighlight').checked : true
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         }
@@ -2074,6 +2084,10 @@
 
         function updateCursorHighlight() {
             document.querySelectorAll('.active-cell-highlight').forEach(el => el.classList.remove('active-cell-highlight'));
+            
+            const enableHighlightBtn = document.getElementById('enableHighlight');
+            if (enableHighlightBtn && !enableHighlightBtn.checked) return;
+
             let pos = elements.input.selectionStart;
             let target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"]`);
             if (!target && pos > 0) {
@@ -2111,6 +2125,12 @@
         });
 
         // ===== イベントリスナー =====
+        if (document.getElementById('enableHighlight')) {
+            document.getElementById('enableHighlight').addEventListener('change', () => {
+                saveState();
+                updateCursorHighlight();
+            });
+        }
         elements.input.addEventListener('input', renderNotebookWithOverlay);
         elements.showHeader.addEventListener('change', renderNotebookWithOverlay);
         elements.cols.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebookWithOverlay(); });
