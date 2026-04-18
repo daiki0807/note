@@ -455,7 +455,7 @@
                     <span id="charCountStatus" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold">現在: -行目 / -文字</span>
                 </div>
             </div>
-            <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm font-mono focus:ring-blue-500 focus:border-blue-500" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
+            <textarea id="inputText" rows="5" class="w-full border border-gray-300 rounded-md p-2 text-sm font-mono focus:ring-blue-500 focus:border-blue-500" style="line-height: 1.6; letter-spacing: 0.1em;" placeholder="ここに文字を入力します。&#10;改行も反映されます。">あいうえお
 かきくけこ
 
 さしすせそ</textarea>
@@ -2131,7 +2131,42 @@
                 updateCursorHighlight();
             });
         }
-        elements.input.addEventListener('input', renderNotebookWithOverlay);
+        
+        function toZenkaku(str) {
+            return str.replace(/[A-Za-z0-9\+\-\=\*\/\(\)\., \!]/g, function(s) {
+                if (s === ' ') return '　';
+                if (s === '-') return '－';
+                return String.fromCharCode(s.charCodeAt(0) + 0xFEE0);
+            });
+        }
+
+        let isComposing = false;
+        elements.input.addEventListener('compositionstart', () => { isComposing = true; });
+        elements.input.addEventListener('compositionend', () => { 
+            isComposing = false;
+            handleTextInput();
+        });
+
+        function handleTextInput() {
+            if (isComposing) return;
+            const originalPos = elements.input.selectionStart;
+            const originalVal = elements.input.value;
+            const converted = toZenkaku(originalVal);
+            if (originalVal !== converted) {
+                elements.input.value = converted;
+                elements.input.setSelectionRange(originalPos, originalPos);
+            }
+            renderNotebookWithOverlay();
+        }
+
+        elements.input.addEventListener('input', () => {
+            if (!isComposing) {
+                handleTextInput();
+            } else {
+                renderNotebookWithOverlay();
+            }
+        });
+        
         elements.showHeader.addEventListener('change', renderNotebookWithOverlay);
         elements.cols.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebookWithOverlay(); });
         elements.rows.addEventListener('input', () => { elements.templateSelect.value = 'custom'; renderNotebookWithOverlay(); });
