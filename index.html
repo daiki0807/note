@@ -134,6 +134,14 @@
 
         .cell-content {
             z-index: 10;
+            pointer-events: none; /* セル自体をクリックしやすくするため */
+        }
+
+        /* 編集中のセル */
+        .cell:focus, .np-cell:focus {
+            outline: 2px solid #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.1);
+            z-index: 20;
         }
 
         .active-cell-highlight {
@@ -706,11 +714,7 @@
         })();
 
         function renderNotebook() {
-            const text = elements.input.value;
-            const direction = Array.from(elements.direction).find(radio => radio.checked).value;
-            const colsCount = parseInt(elements.cols.value) || 10;
-            const rowsCount = parseInt(elements.rows.value) || 7;
-            const style = elements.style.value;
+            const parsedLines = getTokensFromEditor(elements.input);
             const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
 
             elements.scaleWrapper.innerHTML = '';
@@ -723,39 +727,39 @@
             const isGenko = TEMPLATES[templateId]?.isGenko;
             const isNumberPractice = TEMPLATES[templateId]?.isNumberPractice;
             if (isGenko) {
-                renderGenkoYoshi(text, fontRatio);
+                renderGenkoYoshi(parsedLines, fontRatio);
                 saveState();
                 return;
             }
             if (isNumberPractice) {
-                renderNumberPractice();
+                renderNumberPractice(parsedLines, fontRatio);
                 saveState();
                 return;
             }
             if (TEMPLATES[templateId]?.isMath17) {
-                renderMath17();
+                renderMath17(parsedLines, fontRatio);
                 saveState();
                 return;
             }
             if (TEMPLATES[templateId]?.isMath22) {
-                renderMath22();
+                renderMath22(parsedLines, fontRatio);
                 saveState();
                 return;
             }
+
+            const direction = Array.from(elements.direction).find(radio => radio.checked).value;
+            const colsCount = parseInt(elements.cols.value) || 10;
+            const rowsCount = parseInt(elements.rows.value) || 7;
+            const style = elements.style.value;
 
             const cellsPerLine = colsCount;
             const maxLines = rowsCount;
             const includeHeader = elements.showHeader.checked;
 
-            // A4用紙の利用可能サイズ（mm単位で直接計算、ピクセル変換なし）
-            // A4: 210mm x 297mm, padding各辺20mm → 利用可能: 170mm x 257mm
+            // A4用紙の利用可能サイズ
             const AVAIL_W_MM = 170;
-            // ヘッダーがある場合は高さを調整 (35mm: 25mm header + 10mm margin)
             const AVAIL_H_MM = includeHeader ? (257 - 35) : 257;
 
-            // グリッドの列数・行数を計算（A4縦向きに収まるように）
-            // 横書き: gridCols=cellsPerLine（横方向）, gridRows=maxLines（縦方向）
-            // 縦書き: gridCols=maxLines（横方向＝行数）, gridRows=cellsPerLine（縦方向＝1行のマス数）
             let gridCols, gridRows;
             if (direction === 'horizontal') {
                 gridCols = cellsPerLine;
@@ -765,19 +769,15 @@
                 gridRows = cellsPerLine;
             }
 
-            // 正方形のセルサイズを計算（mm単位、A4に収まる最大サイズ）
-            // 小数点以下1桁に丸めてわずかなバッファを確保
             const cellSizeMM = Math.floor(Math.min(AVAIL_W_MM / gridCols, AVAIL_H_MM / gridRows) * 10) / 10;
-            const cellSizePx = cellSizeMM * 3.7795; // フォントサイズ計算用
+            const cellSizePx = cellSizeMM * 3.7795;
             const fontSize = cellSizePx * fontRatio;
 
-            // テキストのパースとマス割り当てロジック（リッチエディタ対応）
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
             const EMPTY_TOKEN = { char: '', color: null, sourceIndex: -1 };
 
-            const parsedLines = getTokensFromEditor(elements.input);
-
+            let globalIndex = 0;
             for (const lineTokens of parsedLines) {
                 let currentLineTokens = [];
 
@@ -793,22 +793,32 @@
                     }
 
                     currentLineTokens.push(token);
+                    globalIndex = Math.max(globalIndex, token.sourceIndex + 1);
                     if (currentLineTokens.length === cellsPerLine) {
                         gridData.push(currentLineTokens);
                         currentLineTokens = [];
+                        globalIndex++; // 改行分
                     }
                 }
 
                 if (currentLineTokens.length > 0 || lineTokens.length === 0) {
                     while (currentLineTokens.length < cellsPerLine) {
-                        currentLineTokens.push(EMPTY_TOKEN);
+                        currentLineTokens.push({ char: '', color: null, sourceIndex: globalIndex });
+                        globalIndex++;
                     }
                     gridData.push(currentLineTokens);
+                    globalIndex++; // 改行分
                 }
             }
 
             if (gridData.length === 0) {
-                gridData.push(Array(cellsPerLine).fill(EMPTY_TOKEN));
+                const emptyLine = [];
+                for (let i = 0; i < cellsPerLine; i++) {
+                    emptyLine.push({ char: '', color: null, sourceIndex: globalIndex });
+                    globalIndex++;
+                }
+                gridData.push(emptyLine);
+                globalIndex++;
             }
             const totalPages = Math.ceil(gridData.length / maxLines) || 1;
 
@@ -816,7 +826,13 @@
             for (let p = 0; p < totalPages; p++) {
                 const pageData = gridData.slice(p * maxLines, (p + 1) * maxLines);
                 while (pageData.length < maxLines) {
-                    pageData.push(Array(cellsPerLine).fill(EMPTY_TOKEN));
+                    const emptyLine = [];
+                    for (let i = 0; i < cellsPerLine; i++) {
+                        emptyLine.push({ char: '', color: null, sourceIndex: globalIndex });
+                        globalIndex++;
+                    }
+                    pageData.push(emptyLine);
+                    globalIndex++;
                 }
 
                 const paperDiv = document.createElement('div');
@@ -885,41 +901,31 @@
             setTimeout(adjustScale, 10);
         }
 
-        function renderGenkoYoshi(text, fontRatio) {
+        function renderGenkoYoshi(parsedLines, fontRatio) {
             const CELLS_PER_LINE = 20;
             const MAX_LINES = 20;
             const HEADER_HEIGHT = 12; // mm（横書きヘッダー高さ）
 
-            // A4横向き: 297mm × 210mm
-            // 余白: 上3mm, 下5mm, 左右5mm
             const PADDING_TOP = 3;
             const PADDING_BOTTOM = 5;
             const PADDING_LR = 5;
             const AVAIL_W_MM = 297 - (PADDING_LR * 2); // 287mm
             const AVAIL_H_MM = 210 - PADDING_TOP - PADDING_BOTTOM; // 202mm
-
-            // ヘッダー分を差し引いたグリッド高さ
             const gridHeightMM = AVAIL_H_MM - HEADER_HEIGHT; // 190mm
 
-            // 正方形セルサイズ: 幅・高さの両方に収まる最大サイズ
             const cellSizeMM = Math.floor(Math.min(AVAIL_W_MM / MAX_LINES, gridHeightMM / CELLS_PER_LINE) * 100) / 100;
             const fontSizePx = cellSizeMM * 3.7795 * fontRatio;
 
-            // 印刷時に横向きにするための@pageルールを設定
             document.getElementById('printPageStyle').textContent = '@media print { @page { size: A4 landscape; margin: 0; } }';
 
-            // テキストパース（色対応）
-            const lines = text.split('\n');
             const gridData = [];
             const kinsokuChars = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?'];
-            const EMPTY_G = { char: '', color: null, sourceIndex: -1 };
 
-            let currentAbsIndex = 0;
-            for (const line of lines) {
+            let globalIndex = 0;
+            for (const lineTokens of parsedLines) {
                 let currentLineTokens = [];
-                const tokens = parseColoredText(line, currentAbsIndex);
-                for (let c = 0; c < tokens.length; c++) {
-                    const token = tokens[c];
+                for (let c = 0; c < lineTokens.length; c++) {
+                    const token = lineTokens[c];
                     if (currentLineTokens.length === 0 && gridData.length > 0 && kinsokuChars.includes(token.char)) {
                         const previousLine = gridData[gridData.length - 1];
                         const last = previousLine[previousLine.length - 1];
@@ -927,19 +933,21 @@
                         continue;
                     }
                     currentLineTokens.push(token);
+                    globalIndex = Math.max(globalIndex, token.sourceIndex + 1);
                     if (currentLineTokens.length === CELLS_PER_LINE) {
                         gridData.push(currentLineTokens);
                         currentLineTokens = [];
+                        globalIndex++;
                     }
                 }
-                if (currentLineTokens.length > 0 || tokens.length === 0) {
-                    while (currentLineTokens.length < CELLS_PER_LINE) currentLineTokens.push(EMPTY_G);
+                if (currentLineTokens.length > 0 || lineTokens.length === 0) {
+                    while (currentLineTokens.length < CELLS_PER_LINE) {
+                        currentLineTokens.push({ char: '', color: null, sourceIndex: globalIndex });
+                        globalIndex++;
+                    }
                     gridData.push(currentLineTokens);
+                    globalIndex++;
                 }
-                currentAbsIndex += line.length + 1;
-            }
-            if (gridData.length === 0) {
-                gridData.push(Array(CELLS_PER_LINE).fill(EMPTY_G));
             }
 
             const totalPages = Math.ceil(gridData.length / MAX_LINES) || 1;
@@ -947,112 +955,72 @@
             for (let p = 0; p < totalPages; p++) {
                 const pageData = gridData.slice(p * MAX_LINES, (p + 1) * MAX_LINES);
                 while (pageData.length < MAX_LINES) {
-                    pageData.push(Array(CELLS_PER_LINE).fill(EMPTY_G));
+                    const emptyLine = [];
+                    for(let i=0; i<CELLS_PER_LINE; i++) {
+                        emptyLine.push({ char: '', color: null, sourceIndex: globalIndex });
+                        globalIndex++;
+                    }
+                    pageData.push(emptyLine);
+                    globalIndex++;
                 }
 
-                // A4横向き用紙
                 const paperDiv = document.createElement('div');
                 paperDiv.className = 'a4-paper a4-landscape';
                 paperDiv.style.padding = `${PADDING_TOP}mm ${PADDING_LR}mm ${PADDING_BOTTOM}mm ${PADDING_LR}mm`;
 
-                // 原稿用紙コンテナ
                 const genkoContainer = document.createElement('div');
                 genkoContainer.className = 'genko-container';
 
-                // === 横書きヘッダー（タイトル・名前欄） ===
                 const header = document.createElement('div');
                 header.className = 'genko-header';
-
-                const titleCell = document.createElement('div');
-                titleCell.className = 'header-cell header-cell-title';
-                titleCell.textContent = '題名';
-                header.appendChild(titleCell);
-
-                const nameCell = document.createElement('div');
-                nameCell.className = 'header-cell header-cell-name';
-                nameCell.textContent = '名前';
-                header.appendChild(nameCell);
-
+                header.innerHTML = `
+                    <div class="header-cell header-cell-title">題名</div>
+                    <div class="header-cell header-cell-name">名前</div>
+                `;
                 genkoContainer.appendChild(header);
 
-                // === グリッドラッパー（中央線含む） ===
                 const gridWrapper = document.createElement('div');
                 gridWrapper.className = 'genko-grid-wrapper';
-
-                // 中央折り目線
                 const centerLine = document.createElement('div');
                 centerLine.className = 'genko-center-line';
                 gridWrapper.appendChild(centerLine);
 
-                // === メイングリッド ===
                 const gridDiv = document.createElement('div');
                 gridDiv.className = 'genko-grid';
                 gridDiv.style.gridTemplateColumns = `repeat(${MAX_LINES}, ${cellSizeMM}mm)`;
                 gridDiv.style.gridTemplateRows = `repeat(${CELLS_PER_LINE}, ${cellSizeMM}mm)`;
                 gridDiv.style.fontSize = `${fontSizePx}px`;
 
-                // 縦書き: 列=行（右→左）, 行=文字（上→下）
                 for (let lineIndex = 0; lineIndex < MAX_LINES; lineIndex++) {
                     const lineData = pageData[lineIndex];
                     for (let charIndex = 0; charIndex < CELLS_PER_LINE; charIndex++) {
-                        const cellDiv = document.createElement('div');
-                        cellDiv.className = 'cell';
-
-                        // 列の左端と右端にやや太いボーダー
+                        const token = lineData[charIndex];
+                        const cellDiv = createCell(token, true);
                         if (charIndex === 0) cellDiv.classList.add('col-border-left');
                         if (charIndex === CELLS_PER_LINE - 1) cellDiv.classList.add('col-border-right');
-
-                        const token = lineData[charIndex];
-                        if (token && token.sourceIndex >= 0) cellDiv.dataset.sourceIndex = token.sourceIndex;
-                        const char = token?.char || '';
-                        if (char && char !== '') {
-                            const span = document.createElement('span');
-                            span.className = 'cell-content';
-                            if (token.isGrouped) {
-                                applyGroupedSpanStyle(span, char);
-                            } else {
-                                if (char.length === 1 && kinsokuChars.includes(char)) {
-                                    span.classList.add('punctuation');
-                                }
-                                span.textContent = char;
-                                // 縦書き：括弧類を90度回転させて正しい縦書き向きで表示
-                                if (char.length === 1 && VERTICAL_BRACKET_MAP[char]) {
-                                    span.style.display = 'inline-block';
-                                    span.style.transform = 'rotate(90deg)';
-                                }
-                            }
-                            if (token?.color) span.style.color = token.color;
-                            cellDiv.appendChild(span);
-                        }
-
-                        // 右→左の列配置
                         cellDiv.style.gridColumn = MAX_LINES - lineIndex;
                         cellDiv.style.gridRow = charIndex + 1;
                         gridDiv.appendChild(cellDiv);
                     }
                 }
-
                 gridWrapper.appendChild(gridDiv);
                 genkoContainer.appendChild(gridWrapper);
                 paperDiv.appendChild(genkoContainer);
                 elements.scaleWrapper.appendChild(paperDiv);
             }
-            
             setTimeout(adjustScale, 10);
         }
 
-        function renderMath22() {
+        function renderMath22(parsedLines, fontRatio) {
             const CELL_MM = 15;
             const PAD_H = 10, PAD_V = 10;
             const HEADER_H_MM = 10;
 
-            // A4縦: 210×297mm
             const AVAIL_W = 210 - PAD_V * 2;
-            const AVAIL_H = 297 - PAD_H * 2 - HEADER_H_MM - 2; // 2mmマージン
+            const AVAIL_H = 297 - PAD_H * 2 - HEADER_H_MM - 2;
 
             const COLS = Math.floor(AVAIL_W / CELL_MM);
             const ROWS = Math.floor(AVAIL_H / CELL_MM);
-            // グリッド幅と余白を計算して左右均等に
             const gridWidthMM = COLS * CELL_MM;
             const sidePadMM = (AVAIL_W - gridWidthMM) / 2 + PAD_V;
 
@@ -1070,48 +1038,58 @@
             container.style.display = 'flex';
             container.style.flexDirection = 'column';
 
-            // ヘッダー（名前欄・日付）
             const topHeader = document.createElement('div');
-            topHeader.style.display = 'flex';
-            topHeader.style.justifyContent = 'space-between';
-            topHeader.style.alignItems = 'flex-end';
+            topHeader.className = 'number-practice-top-header';
             topHeader.style.height = `${HEADER_H_MM}mm`;
             topHeader.style.marginBottom = '2mm';
-            topHeader.style.fontFamily = 'var(--font-kyokasho)';
-            topHeader.style.fontSize = '10px';
-            topHeader.style.color = '#7dd3fc';
-
-            // 名前欄（左）
-            const nameDiv = document.createElement('div');
-            nameDiv.style.borderBottom = '1px solid #7dd3fc';
-            nameDiv.style.width = '45mm';
-            nameDiv.style.height = '14px';
-            topHeader.appendChild(nameDiv);
-
-            // 日付欄（右）
-            const dateDiv = document.createElement('div');
-            dateDiv.style.display = 'flex';
-            dateDiv.style.gap = '4mm';
-            dateDiv.style.alignItems = 'flex-end';
-            dateDiv.innerHTML = `
-                <span>月<span style="display:inline-block;width:10mm;border-bottom:1px solid #7dd3fc;"></span></span>
-                <span>日<span style="display:inline-block;width:10mm;border-bottom:1px solid #7dd3fc;"></span></span>
-                <span>曜日（<span style="display:inline-block;width:14mm;border-bottom:1px solid #7dd3fc;"></span>）</span>
+            topHeader.innerHTML = `
+                <div class="number-practice-name-line"></div>
+                <div class="number-practice-date-area">
+                    <div class="number-practice-date-item"><span>月</span><span class="number-practice-date-line" style="width:10mm;"></span></div>
+                    <div class="number-practice-date-item"><span>日</span><span class="number-practice-date-line" style="width:10mm;"></span></div>
+                    <div class="number-practice-date-item"><span>曜日（</span><span class="number-practice-date-line" style="width:14mm;"></span><span>）</span></div>
+                </div>
             `;
-            topHeader.appendChild(dateDiv);
             container.appendChild(topHeader);
 
-            // グリッド
             const gridDiv = document.createElement('div');
             gridDiv.style.display = 'grid';
             gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${CELL_MM}mm)`;
             gridDiv.style.gridTemplateRows = `repeat(${ROWS}, ${CELL_MM}mm)`;
 
-            for (let i = 0; i < COLS * ROWS; i++) {
-                const cellDiv = document.createElement('div');
-                cellDiv.style.border = '1px solid #7dd3fc';
-                cellDiv.style.boxSizing = 'border-box';
-                gridDiv.appendChild(cellDiv);
+            const gridData = [];
+            let globalIndex = 0;
+            for (const lineTokens of parsedLines) {
+                let cur = [];
+                for (const token of lineTokens) {
+                    cur.push(token);
+                    globalIndex = Math.max(globalIndex, token.sourceIndex + 1);
+                    if (cur.length === COLS) { gridData.push(cur); cur = []; globalIndex++; }
+                }
+                while (cur.length < COLS) {
+                    cur.push({ char: '', color: null, sourceIndex: globalIndex });
+                    globalIndex++;
+                }
+                gridData.push(cur);
+                globalIndex++;
+            }
+
+            const fontSize = CELL_MM * 3.7795 * 0.7 * fontRatio;
+            for (let row = 0; row < ROWS; row++) {
+                const lineData = gridData[row] || [];
+                for (let col = 0; col < COLS; col++) {
+                    const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
+                    if (!lineData[col]) globalIndex++;
+                    const cellDiv = createCell(token, false, 'math22-cell');
+                    cellDiv.style.border = '1px solid #7dd3fc';
+                    cellDiv.style.boxSizing = 'border-box';
+                    cellDiv.style.height = `${CELL_MM}mm`;
+                    if (token.char) {
+                        const span = cellDiv.querySelector('.cell-content');
+                        if (span) span.style.fontSize = `${fontSize}px`;
+                    }
+                    gridDiv.appendChild(cellDiv);
+                }
             }
 
             container.appendChild(gridDiv);
@@ -1120,23 +1098,18 @@
             setTimeout(adjustScale, 10);
         }
 
-        function renderMath17() {
-            const text = elements.input.value;
-            const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
-
-            const COLS = 12; // 1〜10, +, −
+        function renderMath17(parsedLines, fontRatio) {
+            const COLS = 12;
             const HEADER_LABELS = ['1','2','3','4','5','6','7','8','9','10','+','−'];
 
-            // A4縦: 210mm×297mm, padding上下10mm 左右10mm
             const PAD_H = 10, PAD_V = 10;
-            const HEADER_H_MM = 10; // 名前・日付欄の高さ
+            const HEADER_H_MM = 10;
             const AVAIL_W = 210 - PAD_V * 2;
             const AVAIL_H = 297 - PAD_H * 2 - HEADER_H_MM;
 
-            // セルは正方形: 幅基準で決定、行数は収まるだけ
             const cellMM = Math.floor(AVAIL_W / COLS * 10) / 10;
             const cellPx = cellMM * 3.7795;
-            const ROWS = Math.floor(AVAIL_H / cellMM); // 数字行 + 練習行
+            const ROWS = Math.floor(AVAIL_H / cellMM);
 
             document.getElementById('printPageStyle').textContent =
                 '@media print { @page { size: A4 portrait; margin: 0; } }';
@@ -1152,33 +1125,25 @@
             container.style.display = 'flex';
             container.style.flexDirection = 'column';
 
-            // 名前・日付ヘッダー
             const topHeader = document.createElement('div');
             topHeader.className = 'number-practice-top-header';
             topHeader.style.height = `${HEADER_H_MM}mm`;
             topHeader.style.marginBottom = '2mm';
-
-            const nameLine = document.createElement('div');
-            nameLine.className = 'number-practice-name-line';
-            topHeader.appendChild(nameLine);
-
-            const dateArea = document.createElement('div');
-            dateArea.className = 'number-practice-date-area';
-            dateArea.innerHTML = `
-                <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
-                <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
-                <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:16mm;"></span><span>）</span></div>
+            topHeader.innerHTML = `
+                <div class="number-practice-name-line"></div>
+                <div class="number-practice-date-area">
+                    <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
+                    <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
+                    <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:16mm;"></span><span>）</span></div>
+                </div>
             `;
-            topHeader.appendChild(dateArea);
             container.appendChild(topHeader);
 
-            // グリッド
             const gridDiv = document.createElement('div');
             gridDiv.className = 'number-practice-grid';
             gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellMM}mm)`;
             gridDiv.style.gridTemplateRows = `repeat(${ROWS}, ${cellMM}mm)`;
 
-            // 1行目: 数字・記号ヘッダー
             const headerFontSize = cellPx * 0.65;
             for (let col = 0; col < COLS; col++) {
                 const cellDiv = document.createElement('div');
@@ -1191,44 +1156,38 @@
                 gridDiv.appendChild(cellDiv);
             }
 
-            // テキストをパース（横書き・色対応）
-            const lines = text.split('\n');
-            const practiceData = [];
-            let currentAbsIndex = 0;
-            for (const line of lines) {
+            const gridData = [];
+            let globalIndex = 0;
+            for (const lineTokens of parsedLines) {
                 let cur = [];
-                for (const token of parseColoredText(line, currentAbsIndex)) {
+                for (const token of lineTokens) {
                     cur.push(token);
-                    if (cur.length === COLS) { practiceData.push(cur); cur = []; }
+                    globalIndex = Math.max(globalIndex, token.sourceIndex + 1);
+                    if (cur.length === COLS) { gridData.push(cur); cur = []; globalIndex++; }
                 }
-                while (cur.length < COLS) cur.push({ char: '', color: null, sourceIndex: -1 });
-                practiceData.push(cur);
-                currentAbsIndex += line.length + 1;
+                while (cur.length < COLS) {
+                    cur.push({ char: '', color: null, sourceIndex: globalIndex });
+                    globalIndex++;
+                }
+                gridData.push(cur);
+                globalIndex++;
             }
 
-            // 2行目以降: 練習マス（十字リーダー）
             const practiceFontSize = cellPx * fontRatio;
             const PRACTICE_ROWS = ROWS - 1;
             for (let row = 0; row < PRACTICE_ROWS; row++) {
-                const lineData = practiceData[row] || [];
+                const lineData = gridData[row] || [];
                 for (let col = 0; col < COLS; col++) {
-                    const cellDiv = document.createElement('div');
-                    cellDiv.className = 'np-cell practice-cell';
-                    const token = lineData[col] || { char: '', color: null, sourceIndex: -1 };
-                    if (token.sourceIndex >= 0) cellDiv.dataset.sourceIndex = token.sourceIndex;
+                    const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
+                    if (!lineData[col]) globalIndex++;
+                    const cellDiv = createCell(token, false, 'np-cell practice-cell');
                     if (token.char) {
-                        const span = document.createElement('span');
-                        span.className = 'cell-content';
-                        span.style.fontSize = `${practiceFontSize}px`;
-                        span.style.fontFamily = 'var(--font-kyokasho)';
-                        span.style.zIndex = '1';
-                        if (token.isGrouped) {
-                            applyGroupedSpanStyle(span, token.char);
-                        } else {
-                            span.textContent = token.char;
+                        const span = cellDiv.querySelector('.cell-content');
+                        if (span) {
+                            span.style.fontSize = `${practiceFontSize}px`;
+                            span.style.fontFamily = 'var(--font-kyokasho)';
+                            span.style.zIndex = '1';
                         }
-                        if (token.color) span.style.color = token.color;
-                        cellDiv.appendChild(span);
                     }
                     gridDiv.appendChild(cellDiv);
                 }
@@ -1240,20 +1199,17 @@
             setTimeout(adjustScale, 10);
         }
 
-        function renderNumberPractice() {
-            const text = elements.input.value;
-            const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
+        function renderNumberPractice(parsedLines, fontRatio) {
             const COLS = 10;
             const PRACTICE_ROWS = 8;
             const TOTAL_ROWS = PRACTICE_ROWS + 1;
 
-            const PADDING_H_MM = 8;  // 上下
-            const PADDING_V_MM = 10; // 左右
+            const PADDING_H_MM = 8;
+            const PADDING_V_MM = 10;
             const HEADER_H_MM = 12;
             const AVAIL_W_MM = 297 - PADDING_V_MM * 2;
             const AVAIL_H_MM = 210 - PADDING_H_MM * 2 - HEADER_H_MM;
 
-            // セルを正方形に近い比率でページに収める
             const cellHMM = Math.floor(AVAIL_H_MM / TOTAL_ROWS * 10) / 10;
             const cellWMM = Math.min(Math.floor(AVAIL_W_MM / COLS * 10) / 10, Math.floor(cellHMM * 1.3 * 10) / 10);
             const cellHPx = cellHMM * 3.7795;
@@ -1270,96 +1226,67 @@
             const container = document.createElement('div');
             container.className = 'number-practice-container';
 
-            // ヘッダー（名前欄 + がつ・にち・ようび）
             const topHeader = document.createElement('div');
             topHeader.className = 'number-practice-top-header';
             topHeader.style.height = `${HEADER_H_MM}mm`;
-
-            const nameLine = document.createElement('div');
-            nameLine.className = 'number-practice-name-line';
-            topHeader.appendChild(nameLine);
-
-            const dateArea = document.createElement('div');
-            dateArea.className = 'number-practice-date-area';
-            dateArea.innerHTML = `
-                <div class="number-practice-date-item">
-                    <span>がつ</span>
-                    <span class="number-practice-date-line" style="width:14mm;"></span>
-                </div>
-                <div class="number-practice-date-item">
-                    <span>にち</span>
-                    <span class="number-practice-date-line" style="width:14mm;"></span>
-                </div>
-                <div class="number-practice-date-item">
-                    <span>ようび（</span>
-                    <span class="number-practice-date-line" style="width:18mm;"></span>
-                    <span>）</span>
+            topHeader.innerHTML = `
+                <div class="number-practice-name-line"></div>
+                <div class="number-practice-date-area">
+                    <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:14mm;"></span></div>
+                    <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:14mm;"></span></div>
+                    <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:18mm;"></span><span>）</span></div>
                 </div>
             `;
-            topHeader.appendChild(dateArea);
             container.appendChild(topHeader);
 
-            // グリッド
             const gridDiv = document.createElement('div');
             gridDiv.className = 'number-practice-grid';
             gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellWMM}mm)`;
             gridDiv.style.gridTemplateRows = `repeat(${TOTAL_ROWS}, ${cellHMM}mm)`;
 
-            // 数字ヘッダー行
             for (let col = 0; col < COLS; col++) {
                 const num = (col + 1).toString();
                 const cellDiv = document.createElement('div');
                 cellDiv.className = 'np-cell';
-
                 const digitSpan = document.createElement('span');
                 digitSpan.className = 'np-digit';
                 digitSpan.style.fontSize = `${cellHPx * 0.72}px`;
                 digitSpan.textContent = num;
                 cellDiv.appendChild(digitSpan);
-
                 gridDiv.appendChild(cellDiv);
             }
 
-            // テキストを横書きでパース（2行目以降・色対応）
-            const lines = text.split('\n');
-            const practiceData = [];
-            let currentAbsIndex = 0;
-            for (const line of lines) {
+            const gridData = [];
+            let globalIndex = 0;
+            for (const lineTokens of parsedLines) {
                 let cur = [];
-                const tokens = parseColoredText(line, currentAbsIndex);
-                for (const token of tokens) {
+                for (const token of lineTokens) {
                     cur.push(token);
-                    if (cur.length === COLS) { practiceData.push(cur); cur = []; }
+                    globalIndex = Math.max(globalIndex, token.sourceIndex + 1);
+                    if (cur.length === COLS) { gridData.push(cur); cur = []; globalIndex++; }
                 }
-                if (cur.length > 0 || tokens.length === 0) {
-                    while (cur.length < COLS) cur.push({ char: '', color: null, sourceIndex: -1 });
-                    practiceData.push(cur);
+                while (cur.length < COLS) {
+                    cur.push({ char: '', color: null, sourceIndex: globalIndex });
+                    globalIndex++;
                 }
-                currentAbsIndex += line.length + 1;
+                gridData.push(cur);
+                globalIndex++;
             }
 
-            // 練習行
             const practiceFontSize = cellHPx * fontRatio;
             for (let row = 0; row < PRACTICE_ROWS; row++) {
-                const lineData = practiceData[row] || [];
+                const lineData = gridData[row] || [];
                 for (let col = 0; col < COLS; col++) {
-                    const cellDiv = document.createElement('div');
-                    cellDiv.className = 'np-cell practice-cell';
-                    const token = lineData[col] || { char: '', color: null, sourceIndex: -1 };
-                    if (token.sourceIndex >= 0) cellDiv.dataset.sourceIndex = token.sourceIndex;
+                    const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
+                    if (!lineData[col]) globalIndex++;
+                    const cellDiv = createCell(token, false, 'np-cell practice-cell');
                     if (token.char) {
-                        const span = document.createElement('span');
-                        span.className = 'cell-content';
-                        span.style.fontSize = `${practiceFontSize}px`;
-                        span.style.fontFamily = 'var(--font-kyokasho)';
-                        span.style.zIndex = '1';
-                        if (token.isGrouped) {
-                            applyGroupedSpanStyle(span, token.char);
-                        } else {
-                            span.textContent = token.char;
+                        const span = cellDiv.querySelector('.cell-content');
+                        if (span) {
+                            span.style.fontSize = `${practiceFontSize}px`;
+                            span.style.fontFamily = 'var(--font-kyokasho)';
+                            span.style.zIndex = '1';
                         }
-                        if (token.color) span.style.color = token.color;
-                        cellDiv.appendChild(span);
                     }
                     gridDiv.appendChild(cellDiv);
                 }
@@ -1368,7 +1295,6 @@
             container.appendChild(gridDiv);
             paperDiv.appendChild(container);
             elements.scaleWrapper.appendChild(paperDiv);
-
             setTimeout(adjustScale, 10);
         }
 
@@ -1534,9 +1460,12 @@
             }
         }
 
-        function createCell(token, isVertical = false) {
+        function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
-            cellDiv.className = 'cell';
+            cellDiv.className = className;
+            cellDiv.contentEditable = "true";
+            cellDiv.spellcheck = false;
+
             if (token.sourceIndex >= 0) {
                 cellDiv.dataset.sourceIndex = token.sourceIndex;
             }
@@ -1565,7 +1494,179 @@
                 if (token.color) span.style.color = token.color;
                 cellDiv.appendChild(span);
             }
+
+            // セルへの直接入力イベント
+            cellDiv.addEventListener('beforeinput', (e) => {
+                if (e.inputType === 'insertText' || e.inputType === 'insertCompositionText') {
+                    e.preventDefault();
+                    const char = e.data;
+                    if (char) {
+                        insertCharAtSourceIndex(token.sourceIndex, char);
+                    }
+                } else if (e.inputType === 'deleteContentBackward') {
+                    e.preventDefault();
+                    deleteCharAtSourceIndex(token.sourceIndex - 1);
+                }
+            });
+
+            // キーボードナビゲーション
+            cellDiv.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    navigateCell(cellDiv, e.key);
+                }
+            });
+
             return cellDiv;
+        }
+
+        function navigateCell(currentCell, key) {
+            const rect = currentCell.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            
+            // ページ全体のセルを取得（テンプレートによらず共通）
+            const allCells = Array.from(document.querySelectorAll('.cell, .np-cell, .math22-cell'));
+            if (allCells.length === 0) return;
+
+            let bestCell = null;
+            let minDistance = Infinity;
+
+            const STEP = rect.width || 40; // 移動の目安
+
+            allCells.forEach(cell => {
+                if (cell === currentCell) return;
+                const r = cell.getBoundingClientRect();
+                const targetCx = r.left + r.width / 2;
+                const targetCy = r.top + r.height / 2;
+
+                const dx = targetCx - cx;
+                const dy = targetCy - cy;
+
+                let isDirectional = false;
+                if (key === 'ArrowRight' && dx > 5 && Math.abs(dy) < r.height) isDirectional = true;
+                if (key === 'ArrowLeft' && dx < -5 && Math.abs(dy) < r.height) isDirectional = true;
+                if (key === 'ArrowDown' && dy > 5 && Math.abs(dx) < r.width) isDirectional = true;
+                if (key === 'ArrowUp' && dy < -5 && Math.abs(dx) < r.width) isDirectional = true;
+
+                if (isDirectional) {
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        bestCell = cell;
+                    }
+                }
+            });
+
+            if (bestCell) {
+                bestCell.focus();
+            }
+        }
+
+        // 指定したインデックスに文字を挿入し、再描画
+        function insertCharAtSourceIndex(index, char) {
+            const editor = elements.input;
+            const tokens = getFlatTokens(editor);
+            
+            // 全角化
+            const zenChar = toZenkaku(char);
+
+            if (index < tokens.length) {
+                // 既存の文字の前に挿入（または置換したい場合はここを調整）
+                // ユーザー体験的には「上書き」に近い方が良いかもしれないが、
+                // ノートなので「挿入」が一般的か。
+                setCaretAtSourceIndex(index);
+                document.execCommand('insertText', false, zenChar);
+            } else {
+                // 末尾より先の場合は、不足分をスペースや改行で埋める
+                let currentText = editor.innerText;
+                // 簡易的に末尾に追加
+                editor.focus();
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(editor);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.execCommand('insertText', false, zenChar);
+            }
+            
+            const nextIndex = index + zenChar.length;
+            renderNotebookWithOverlay();
+            
+            // 次のセルにフォーカスを移動
+            setTimeout(() => {
+                const nextCell = document.querySelector(`[data-source-index="${nextIndex}"]`);
+                if (nextCell) nextCell.focus();
+            }, 0);
+        }
+
+        function deleteCharAtSourceIndex(index) {
+            if (index < 0) return;
+            setCaretAtSourceIndex(index + 1);
+            document.execCommand('delete', false, null);
+            renderNotebookWithOverlay();
+            
+            setTimeout(() => {
+                const prevCell = document.querySelector(`[data-source-index="${index}"]`);
+                if (prevCell) prevCell.focus();
+            }, 0);
+        }
+
+        function setCaretAtSourceIndex(index) {
+            const editor = elements.input;
+            editor.focus();
+            const sel = window.getSelection();
+            const range = document.createRange();
+            let currentOffset = 0;
+            let targetNode = null;
+            let targetOffset = 0;
+
+            function traverse(node) {
+                if (targetNode) return;
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const len = node.nodeValue.length;
+                    if (currentOffset + len >= index) {
+                        targetNode = node;
+                        targetOffset = index - currentOffset;
+                    } else {
+                        currentOffset += len;
+                    }
+                } else {
+                    if (node.nodeName === 'BR') {
+                        if (currentOffset === index) {
+                            targetNode = node.parentNode;
+                            targetOffset = Array.from(node.parentNode.childNodes).indexOf(node);
+                        }
+                        currentOffset++;
+                    }
+                    for (let child of node.childNodes) traverse(child);
+                }
+            }
+            traverse(editor);
+            
+            if (targetNode) {
+                try {
+                    if (targetNode.nodeType === Node.TEXT_NODE) {
+                        range.setStart(targetNode, Math.min(targetOffset, targetNode.nodeValue.length));
+                    } else {
+                        range.setStart(targetNode, targetOffset);
+                    }
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } catch(e) { console.error(e); }
+            }
+        }
+
+        function getFlatTokens(editor) {
+            const lines = getTokensFromEditor(editor);
+            const flat = [];
+            for (const line of lines) {
+                for (const t of line) flat.push(t);
+                flat.push({ char: '\n', sourceIndex: -1 }); // 改行用
+            }
+            return flat;
         }
 
         function adjustScale() {
