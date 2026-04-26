@@ -1460,6 +1460,45 @@
             }
         }
 
+        function processCellSync(cellDiv, token, newText) {
+            const zenText = toZenkaku(newText);
+            if (zenText === (token.char || '')) return;
+
+            elements.input.focus();
+            
+            if (token.char && token.char.length > 0 && token.sourceIndex >= 0) {
+                setCaretAtSourceIndex(token.sourceIndex + token.char.length);
+                for (let i = 0; i < token.char.length; i++) {
+                    document.execCommand('delete', false, null);
+                }
+            } else if (token.sourceIndex >= 0) {
+                setCaretAtSourceIndex(token.sourceIndex);
+            } else {
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(elements.input);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+            
+            if (zenText.length > 0) {
+                document.execCommand('insertText', false, zenText);
+            }
+            
+            renderNotebookWithOverlay();
+            
+            let nextIndex = (token.sourceIndex >= 0 ? token.sourceIndex : getFlatTokens(elements.input).length);
+            if (zenText.length > 0) {
+                nextIndex += zenText.length;
+            }
+            
+            setTimeout(() => {
+                const nextCell = document.querySelector(`[data-source-index="${nextIndex}"]`);
+                if (nextCell) nextCell.focus();
+            }, 0);
+        }
+
         function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
@@ -1495,23 +1534,36 @@
                 cellDiv.appendChild(span);
             }
 
-            // セルへの直接入力イベント
-            cellDiv.addEventListener('beforeinput', (e) => {
-                if (e.inputType === 'insertText' || e.inputType === 'insertCompositionText') {
-                    e.preventDefault();
-                    const char = e.data;
-                    if (char) {
-                        insertCharAtSourceIndex(token.sourceIndex, char);
-                    }
-                } else if (e.inputType === 'deleteContentBackward') {
-                    e.preventDefault();
-                    deleteCharAtSourceIndex(token.sourceIndex - 1);
-                }
+            let cellIsComposing = false;
+            
+            cellDiv.addEventListener('compositionstart', () => {
+                cellIsComposing = true;
+            });
+            
+            cellDiv.addEventListener('compositionend', (e) => {
+                cellIsComposing = false;
+                processCellSync(cellDiv, token, cellDiv.textContent);
+            });
+            
+            cellDiv.addEventListener('input', (e) => {
+                if (cellIsComposing) return;
+                processCellSync(cellDiv, token, cellDiv.textContent);
             });
 
-            // キーボードナビゲーション
             cellDiv.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                if (e.key === 'Backspace' && cellDiv.textContent === '') {
+                    e.preventDefault();
+                    if (token.sourceIndex > 0) {
+                        elements.input.focus();
+                        setCaretAtSourceIndex(token.sourceIndex);
+                        document.execCommand('delete', false, null);
+                        renderNotebookWithOverlay();
+                        setTimeout(() => {
+                            const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
+                            if (prevCell) prevCell.focus();
+                        }, 0);
+                    }
+                } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     e.preventDefault();
                     navigateCell(cellDiv, e.key);
                 }
@@ -1563,55 +1615,7 @@
             }
         }
 
-        // 指定したインデックスに文字を挿入し、再描画
-        function insertCharAtSourceIndex(index, char) {
-            const editor = elements.input;
-            const tokens = getFlatTokens(editor);
-            
-            // 全角化
-            const zenChar = toZenkaku(char);
 
-            if (index < tokens.length) {
-                // 既存の文字の前に挿入（または置換したい場合はここを調整）
-                // ユーザー体験的には「上書き」に近い方が良いかもしれないが、
-                // ノートなので「挿入」が一般的か。
-                setCaretAtSourceIndex(index);
-                document.execCommand('insertText', false, zenChar);
-            } else {
-                // 末尾より先の場合は、不足分をスペースや改行で埋める
-                let currentText = editor.innerText;
-                // 簡易的に末尾に追加
-                editor.focus();
-                const sel = window.getSelection();
-                const range = document.createRange();
-                range.selectNodeContents(editor);
-                range.collapse(false);
-                sel.removeAllRanges();
-                sel.addRange(range);
-                document.execCommand('insertText', false, zenChar);
-            }
-            
-            const nextIndex = index + zenChar.length;
-            renderNotebookWithOverlay();
-            
-            // 次のセルにフォーカスを移動
-            setTimeout(() => {
-                const nextCell = document.querySelector(`[data-source-index="${nextIndex}"]`);
-                if (nextCell) nextCell.focus();
-            }, 0);
-        }
-
-        function deleteCharAtSourceIndex(index) {
-            if (index < 0) return;
-            setCaretAtSourceIndex(index + 1);
-            document.execCommand('delete', false, null);
-            renderNotebookWithOverlay();
-            
-            setTimeout(() => {
-                const prevCell = document.querySelector(`[data-source-index="${index}"]`);
-                if (prevCell) prevCell.focus();
-            }, 0);
-        }
 
         function setCaretAtSourceIndex(index) {
             const editor = elements.input;
