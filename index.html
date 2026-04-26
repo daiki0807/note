@@ -2321,49 +2321,9 @@
         });
 
         elements.scaleWrapper.addEventListener('pointerup', (e) => {
-            if (drawing.active) return;
-            
-            const cell = e.target.closest('.cell, .np-cell');
-            if (cell && cell.dataset.sourceIndex) {
-                const index = parseInt(cell.dataset.sourceIndex, 10);
-                elements.input.focus();
-                
-                // ContentEditableのキャレットを復元
-                let sel = window.getSelection();
-                let range = document.createRange();
-                let currentOffset = 0;
-                let targetNode = null;
-                let targetOffset = 0;
-                
-                function traverseCaret(node) {
-                    if (targetNode) return;
-                    if (node.nodeType === Node.TEXT_NODE) {
-                        const len = node.nodeValue.length;
-                        if (currentOffset + len >= index) {
-                            targetNode = node;
-                            targetOffset = index - currentOffset;
-                        } else {
-                            currentOffset += len;
-                        }
-                    } else {
-                        if (node.nodeName === 'BR') currentOffset += 1;
-                        for (let child of node.childNodes) traverseCaret(child);
-                    }
-                }
-                traverseCaret(elements.input);
-                
-                if (targetNode) {
-                    try {
-                        range.setStart(targetNode, targetOffset);
-                        range.collapse(true);
-                        sel.removeAllRanges();
-                        sel.addRange(range);
-                    } catch(err) {} // ignore range errors for safety
-                }
-                
-                updateCharStatus();
-                updateCursorHighlight();
-            }
+            // セルや特定のUI要素以外をクリックした時のみメインエディタにフォーカスを戻す
+            if (e.target.closest('.cell, .np-cell, .math22-cell, .drawing-overlay, input, button')) return;
+            elements.input.focus();
         });
 
         // ===== イベントリスナー =====
