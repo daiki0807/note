@@ -1471,15 +1471,32 @@
                 for (let i = 0; i < token.char.length; i++) {
                     document.execCommand('delete', false, null);
                 }
-            } else if (token.sourceIndex >= 0) {
+            } else if (token.sourceIndex >= 0 && token.sourceIndex < getFlatTokens(elements.input).length) {
                 setCaretAtSourceIndex(token.sourceIndex);
             } else {
+                let padding = '';
+                const currentLen = getFlatTokens(elements.input).length;
+                if (token.sourceIndex > currentLen) {
+                    for (let i = currentLen; i < token.sourceIndex; i++) {
+                        const cellExists = document.querySelector(`[data-source-index="${i}"]`);
+                        if (cellExists) {
+                            padding += '　';
+                        } else {
+                            padding += '\n';
+                        }
+                    }
+                }
+                
                 const sel = window.getSelection();
                 const range = document.createRange();
                 range.selectNodeContents(elements.input);
                 range.collapse(false);
                 sel.removeAllRanges();
                 sel.addRange(range);
+                
+                if (padding.length > 0) {
+                    document.execCommand('insertText', false, padding);
+                }
             }
             
             if (zenText.length > 0) {
