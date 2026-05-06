@@ -1569,6 +1569,16 @@
             }, 0);
         }
 
+        function getLiveCellToken(cellDiv, fallbackToken) {
+            const sourceIndex = Number.parseInt(cellDiv.dataset.sourceIndex, 10);
+            const liveText = cellDiv.textContent || '';
+            return {
+                ...fallbackToken,
+                char: liveText,
+                sourceIndex: Number.isFinite(sourceIndex) ? sourceIndex : fallbackToken.sourceIndex
+            };
+        }
+
         function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
@@ -1628,10 +1638,11 @@
                     if (next && next._directToken) openDirectCellEditor(next, next._directToken);
                 } else if (e.key === 'Backspace') {
                     e.preventDefault();
-                    if (token.char) {
-                        processCellSync(cellDiv, token, '', { openNext: false });
-                    } else if (token.sourceIndex > 0) {
-                        const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
+                    const liveToken = getLiveCellToken(cellDiv, token);
+                    if (liveToken.char) {
+                        processCellSync(cellDiv, liveToken, '', { openNext: false });
+                    } else if (liveToken.sourceIndex > 0) {
+                        const prevCell = document.querySelector(`[data-source-index="${liveToken.sourceIndex - 1}"]`);
                         if (prevCell) {
                             prevCell.focus();
                         }
@@ -1696,7 +1707,7 @@
                 if (committed) return;
                 committed = true;
                 closeEditor();
-                processCellSync(cellDiv, token, value, { openNext: true });
+                processCellSync(cellDiv, getLiveCellToken(cellDiv, token), value, { openNext: true });
             };
 
             input.addEventListener('compositionstart', () => {
@@ -1745,10 +1756,11 @@
                     e.preventDefault();
                     committed = true;
                     closeEditor();
-                    if (token.char) {
-                        processCellSync(cellDiv, token, '', { openNext: false });
-                    } else if (token.sourceIndex > 0) {
-                        const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
+                    const liveToken = getLiveCellToken(cellDiv, token);
+                    if (liveToken.char) {
+                        processCellSync(cellDiv, liveToken, '', { openNext: false });
+                    } else if (liveToken.sourceIndex > 0) {
+                        const prevCell = document.querySelector(`[data-source-index="${liveToken.sourceIndex - 1}"]`);
                         if (prevCell) prevCell.focus();
                     }
                 } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key) && !input.value) {
