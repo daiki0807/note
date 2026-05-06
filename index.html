@@ -1568,7 +1568,8 @@
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
             const directInputEnabled = !elements.directCellInput || elements.directCellInput.checked;
-            cellDiv.contentEditable = directInputEnabled ? "true" : "false";
+            cellDiv.contentEditable = "false";
+            if (directInputEnabled) cellDiv.tabIndex = 0;
             cellDiv.spellcheck = false;
             cellDiv.title = directInputEnabled ? 'クリックしてこのマスに入力' : '';
             if (directInputEnabled) {
@@ -1604,37 +1605,12 @@
                 cellDiv.appendChild(span);
             }
 
-            let cellIsComposing = false;
-
             cellDiv.addEventListener('focus', () => {
-                if (!directInputEnabled) return;
-                const range = document.createRange();
-                range.selectNodeContents(cellDiv);
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
+                if (directInputEnabled) openDirectCellEditor(cellDiv, token);
             });
 
-            cellDiv.addEventListener('paste', (e) => {
-                if (!directInputEnabled) return;
-                e.preventDefault();
-                const text = (e.clipboardData || window.clipboardData).getData('text');
-                if (!text) return;
-                processCellSync(cellDiv, token, text.replace(/\r\n?/g, '\n'));
-            });
-            
-            cellDiv.addEventListener('compositionstart', () => {
-                cellIsComposing = true;
-            });
-            
-            cellDiv.addEventListener('compositionend', (e) => {
-                cellIsComposing = false;
-                processCellSync(cellDiv, token, cellDiv.textContent);
-            });
-            
-            cellDiv.addEventListener('input', (e) => {
-                if (cellIsComposing) return;
-                processCellSync(cellDiv, token, cellDiv.textContent);
+            cellDiv.addEventListener('click', () => {
+                if (directInputEnabled) openDirectCellEditor(cellDiv, token);
             });
 
             cellDiv.addEventListener('keydown', (e) => {
@@ -1648,7 +1624,7 @@
                     navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
                 } else if (e.key === 'Backspace') {
                     e.preventDefault();
-                    if (cellDiv.textContent !== '') {
+                    if (token.char) {
                         processCellSync(cellDiv, token, '');
                     } else if (token.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
@@ -1659,13 +1635,127 @@
                 } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     e.preventDefault();
                     navigateCell(cellDiv, e.key);
-                } else if (!cellIsComposing && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
                     e.preventDefault();
-                    processCellSync(cellDiv, token, e.key);
+                    openDirectCellEditor(cellDiv, token, e.key);
                 }
             });
 
             return cellDiv;
+        }
+
+        function openDirectCellEditor(cellDiv, token, initialText = '') {
+            const existing = document.getElementById('direct-cell-editor');
+            if (existing) existing.remove();
+
+            const rect = cellDiv.getBoundingClientRect();
+            const input = document.createElement('textarea');
+            input.id = 'direct-cell-editor';
+            input.value = initialText;
+            input.rows = 1;
+            input.autocomplete = 'off';
+            input.autocapitalize = 'off';
+            input.spellcheck = false;
+            input.style.cssText = `
+                position: fixed;
+                left: ${rect.left}px;
+                top: ${rect.top}px;
+                width: ${rect.width}px;
+                height: ${rect.height}px;
+                z-index: 9999;
+                padding: 0;
+                margin: 0;
+                border: 2px solid #3b82f6;
+                border-radius: 0;
+                outline: none;
+                resize: none;
+                overflow: hidden;
+                background: rgba(255,255,255,0.92);
+                color: #111827;
+                text-align: center;
+                font-family: ${window.getComputedStyle(cellDiv).fontFamily};
+                font-size: ${window.getComputedStyle(cellDiv).fontSize};
+                line-height: ${rect.height}px;
+            `;
+            document.body.appendChild(input);
+
+            let composing = false;
+            let committed = false;
+
+            const commit = (value) => {
+                if (committed) return;
+                committed = true;
+                input.remove();
+                processCellSync(cellDiv, token, value);
+            };
+
+            input.addEventListener('compositionstart', () => {
+                composing = true;
+            });
+
+            input.addEventListener('compositionend', () => {
+                composing = false;
+                if (input.value) commit(input.value);
+            });
+
+            input.addEventListener('input', () => {
+                if (!composing && input.value) commit(input.value);
+            });
+
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const text = (e.clipboardData || window.clipboardData).getData('text');
+                if (text) commit(text.replace(/\r\n?/g, '\n'));
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (input.value) commit(input.value);
+                    else {
+                        input.remove();
+                        navigateCell(cellDiv, 'ArrowDown');
+                    }
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (input.value) commit(input.value);
+                    else {
+                        input.remove();
+                        navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
+                    }
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    committed = true;
+                    input.remove();
+                } else if (e.key === 'Backspace' && !input.value) {
+                    e.preventDefault();
+                    committed = true;
+                    input.remove();
+                    if (token.char) {
+                        processCellSync(cellDiv, token, '');
+                    } else if (token.sourceIndex > 0) {
+                        const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
+                        if (prevCell) prevCell.focus();
+                    }
+                } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key) && !input.value) {
+                    e.preventDefault();
+                    committed = true;
+                    input.remove();
+                    navigateCell(cellDiv, e.key);
+                }
+            });
+
+            input.addEventListener('blur', () => {
+                if (!committed) {
+                    const value = input.value;
+                    committed = true;
+                    input.remove();
+                    if (value) processCellSync(cellDiv, token, value);
+                }
+            });
+
+            input.focus();
+            if (initialText) commit(initialText);
         }
 
         function navigateCell(currentCell, key) {
