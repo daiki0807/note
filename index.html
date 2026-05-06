@@ -921,6 +921,8 @@
                         for (let col = 0; col < cellsPerLine; col++) {
                             const t = lineData[col];
                             const cellDiv = createCell(t, false);
+                            cellDiv.dataset.logicalLine = p * maxLines + row;
+                            cellDiv.dataset.logicalChar = col;
                             gridDiv.appendChild(cellDiv);
                         }
                     }
@@ -931,6 +933,8 @@
                         for (let charIndex = 0; charIndex < cellsPerLine; charIndex++) {
                             const t = lineData[charIndex];
                             const cellDiv = createCell(t, true);
+                            cellDiv.dataset.logicalLine = p * maxLines + lineIndex;
+                            cellDiv.dataset.logicalChar = charIndex;
                             cellDiv.style.gridColumn = maxLines - lineIndex;
                             cellDiv.style.gridRow = charIndex + 1;
                             gridDiv.appendChild(cellDiv);
@@ -1044,6 +1048,8 @@
                     for (let charIndex = 0; charIndex < CELLS_PER_LINE; charIndex++) {
                         const token = lineData[charIndex];
                         const cellDiv = createCell(token, true);
+                        cellDiv.dataset.logicalLine = p * MAX_LINES + lineIndex;
+                        cellDiv.dataset.logicalChar = charIndex;
                         if (charIndex === 0) cellDiv.classList.add('col-border-left');
                         if (charIndex === CELLS_PER_LINE - 1) cellDiv.classList.add('col-border-right');
                         cellDiv.style.gridColumn = MAX_LINES - lineIndex;
@@ -1129,6 +1135,8 @@
                     const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
                     if (!lineData[col]) globalIndex++;
                     const cellDiv = createCell(token, false, 'math22-cell');
+                    cellDiv.dataset.logicalLine = row;
+                    cellDiv.dataset.logicalChar = col;
                     cellDiv.style.border = '1px solid #7dd3fc';
                     cellDiv.style.boxSizing = 'border-box';
                     cellDiv.style.height = `${CELL_MM}mm`;
@@ -1229,6 +1237,8 @@
                     const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
                     if (!lineData[col]) globalIndex++;
                     const cellDiv = createCell(token, false, 'np-cell practice-cell');
+                    cellDiv.dataset.logicalLine = row;
+                    cellDiv.dataset.logicalChar = col;
                     if (token.char) {
                         const span = cellDiv.querySelector('.cell-content');
                         if (span) {
@@ -1328,6 +1338,8 @@
                     const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
                     if (!lineData[col]) globalIndex++;
                     const cellDiv = createCell(token, false, 'np-cell practice-cell');
+                    cellDiv.dataset.logicalLine = row;
+                    cellDiv.dataset.logicalChar = col;
                     if (token.char) {
                         const span = cellDiv.querySelector('.cell-content');
                         if (span) {
@@ -1396,6 +1408,12 @@
                     let val = node.nodeValue;
                     if (!val) return;
                     for (let i = 0; i < val.length; i++) {
+                        if (val[i] === '\r' || val[i] === '\n') {
+                            if (val[i] === '\r' && val[i + 1] === '\n') i++;
+                            tokens.push({ char: '\n', color: null, isGrouped: false, sourceIndex: sourceIndex });
+                            sourceIndex++;
+                            continue;
+                        }
                         let color = currentColor;
                         if (color === '#000000' || String(color).match(/inherit|initial/)) color = null;
                         tokens.push({ char: val[i], color: color, isGrouped: currentGroup, sourceIndex: sourceIndex });
@@ -1839,6 +1857,21 @@
             let currentOffset = 0;
             let targetNode = null;
             let targetOffset = 0;
+            let lastCharWasNewline = false;
+
+            function consumeEditorNewlineBeforeBlock(node) {
+                if (node === editor || node.nodeType !== Node.ELEMENT_NODE) return false;
+                const style = window.getComputedStyle(node);
+                if (style.display !== 'block' || currentOffset === 0 || lastCharWasNewline) return false;
+                if (currentOffset === index) {
+                    targetNode = node.parentNode;
+                    targetOffset = Array.from(node.parentNode.childNodes).indexOf(node);
+                    return true;
+                }
+                currentOffset++;
+                lastCharWasNewline = true;
+                return false;
+            }
 
             function traverse(node) {
                 if (targetNode) return;
@@ -1849,14 +1882,17 @@
                         targetOffset = index - currentOffset;
                     } else {
                         currentOffset += len;
+                        if (len > 0) lastCharWasNewline = /[\r\n]$/.test(node.nodeValue);
                     }
                 } else {
+                    if (consumeEditorNewlineBeforeBlock(node)) return;
                     if (node.nodeName === 'BR') {
                         if (currentOffset === index) {
                             targetNode = node.parentNode;
                             targetOffset = Array.from(node.parentNode.childNodes).indexOf(node);
                         }
                         currentOffset++;
+                        lastCharWasNewline = true;
                     }
                     for (let child of node.childNodes) traverse(child);
                 }
@@ -2624,7 +2660,7 @@
             
             // WYSIWYGでの行数・文字数取得（簡易版: プレーンテキストで計算）
             const text = elements.input.innerText || "";
-            const lines = text.split('\n');
+            const lines = text.split(/\r\n|\r|\n/);
             const logicalCharCount = lines[lines.length - 1].length;
             const currentLineNumber = lines.length;
             const maxChars = getMaxCharsPerLine();
@@ -2634,16 +2670,79 @@
 
         // キャレット計算用ヘルパー
         function getCaretCharacterOffsetWithin(element) {
-            let caretOffset = 0;
             const sel = window.getSelection();
-            if (sel.rangeCount > 0) {
-                const range = sel.getRangeAt(0);
-                const preCaretRange = range.cloneRange();
-                preCaretRange.selectNodeContents(element);
-                preCaretRange.setEnd(range.endContainer, range.endOffset);
-                caretOffset = preCaretRange.toString().length;
+            if (!sel.rangeCount) return 0;
+
+            const range = sel.getRangeAt(0);
+            const targetNode = range.endContainer;
+            const targetOffset = range.endOffset;
+            let caretOffset = 0;
+            let found = false;
+            let lastCharWasNewline = false;
+
+            function countEditorNewlineBeforeBlock(node) {
+                if (node === element || node.nodeType !== Node.ELEMENT_NODE) return;
+                const style = window.getComputedStyle(node);
+                if (style.display === 'block' && caretOffset > 0 && !lastCharWasNewline) {
+                    caretOffset++;
+                    lastCharWasNewline = true;
+                }
             }
+
+            function traverse(node) {
+                if (found) return;
+
+                if (node === targetNode) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        caretOffset += targetOffset;
+                        if (targetOffset > 0) {
+                            lastCharWasNewline = /[\r\n]$/.test(node.nodeValue.slice(0, targetOffset));
+                        }
+                    } else {
+                        for (let i = 0; i < targetOffset; i++) {
+                            traverse(node.childNodes[i]);
+                            if (found) return;
+                        }
+                    }
+                    found = true;
+                    return;
+                }
+
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const val = node.nodeValue || '';
+                    caretOffset += val.length;
+                    if (val.length > 0) lastCharWasNewline = /[\r\n]$/.test(val);
+                    return;
+                }
+
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    countEditorNewlineBeforeBlock(node);
+                    if (node.nodeName === 'BR') {
+                        caretOffset++;
+                        lastCharWasNewline = true;
+                        return;
+                    }
+                    for (let child of node.childNodes) {
+                        traverse(child);
+                        if (found) return;
+                    }
+                }
+            }
+
+            traverse(element);
             return caretOffset;
+        }
+
+        function getCaretLogicalPosition(element) {
+            const pos = getCaretCharacterOffsetWithin(element);
+            const text = (element.innerText || '').replace(/\r\n|\r/g, '\n');
+            const beforeCaret = text.slice(0, pos);
+            const lines = beforeCaret.split('\n');
+            return {
+                sourceIndex: pos,
+                line: lines.length - 1,
+                char: lines[lines.length - 1].length
+            };
         }
 
         function updateCursorHighlight() {
@@ -2652,8 +2751,21 @@
             const enableHighlightBtn = document.getElementById('enableHighlight');
             if (enableHighlightBtn && !enableHighlightBtn.checked) return;
 
-            let pos = getCaretCharacterOffsetWithin(elements.input);
-            let target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"], .math22-cell[data-source-index="${pos}"]`);
+            const caret = getCaretLogicalPosition(elements.input);
+            let pos = caret.sourceIndex;
+            let target = document.querySelector(`.cell[data-logical-line="${caret.line}"][data-logical-char="${caret.char}"], .np-cell[data-logical-line="${caret.line}"][data-logical-char="${caret.char}"], .math22-cell[data-logical-line="${caret.line}"][data-logical-char="${caret.char}"]`);
+            if (!target && caret.char > 0) {
+                target = document.querySelector(`.cell[data-logical-line="${caret.line}"][data-logical-char="${caret.char - 1}"], .np-cell[data-logical-line="${caret.line}"][data-logical-char="${caret.char - 1}"], .math22-cell[data-logical-line="${caret.line}"][data-logical-char="${caret.char - 1}"]`);
+            }
+            if (!target && caret.line > 0) {
+                target = document.querySelector(`.cell[data-logical-line="${caret.line - 1}"]:last-of-type, .np-cell[data-logical-line="${caret.line - 1}"]:last-of-type, .math22-cell[data-logical-line="${caret.line - 1}"]:last-of-type`);
+            }
+            if (target) {
+                target.classList.add('active-cell-highlight');
+                return;
+            }
+
+            target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"], .math22-cell[data-source-index="${pos}"]`);
             if (!target && pos > 0) {
                 for (let i = pos - 1; i >= 0; i--) {
                     target = document.querySelector(`.cell[data-source-index="${i}"], .np-cell[data-source-index="${i}"], .math22-cell[data-source-index="${i}"]`);
