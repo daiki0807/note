@@ -138,7 +138,7 @@
         }
 
         /* 編集中のセル */
-        .cell:focus, .np-cell:focus {
+        .cell:focus, .np-cell:focus, .math22-cell:focus {
             outline: 2px solid #3b82f6 !important;
             background-color: rgba(59, 130, 246, 0.1);
             z-index: 20;
@@ -457,6 +457,10 @@
                 <label class="block text-sm font-medium text-gray-700">見本テキスト</label>
                 <div class="flex items-center space-x-3">
                     <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="directCellInput" class="form-checkbox h-3 w-3 text-indigo-600" checked>
+                        <span class="ml-1 text-xs text-gray-600 font-bold">マス直接入力</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="enableHighlight" class="form-checkbox h-3 w-3 text-blue-600" checked>
                         <span class="ml-1 text-xs text-gray-600 font-bold">カーソル同期</span>
                     </label>
@@ -467,7 +471,7 @@
 かきくけこ
 
 さしすせそ</div>
-            <p class="text-xs text-gray-500 mt-1">※改行すると次の行に移動します。</p>
+            <p class="text-xs text-gray-500 mt-1">※改行すると次の行に移動します。マス直接入力がオンの時は、プレビューのマスをクリックして入力できます。</p>
             <div class="mt-2">
                 <p class="text-xs text-gray-500 mb-1">文字装飾（テキストを選択してボタンを押す）</p>
                 <div class="flex gap-1 flex-wrap">
@@ -562,17 +566,27 @@
                 <div class="mb-2">
                     <label class="block text-xs text-gray-600 mb-1">ツール</label>
                     <div class="flex gap-1 flex-wrap">
-                        <button id="toolSelect"  onclick="setDrawTool('select')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">選択/移動</button>
-                        <button id="toolFree"    onclick="setDrawTool('free')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-purple-500 bg-purple-500 text-white">手書き</button>
-                        <button id="toolEraser"  onclick="setDrawTool('eraser')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">消しゴム</button>
+                        <button id="toolSelect" data-tool="select" onclick="setDrawTool('select')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">選択/移動</button>
+                        <button id="toolFree" data-tool="free" onclick="setDrawTool('free')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-purple-500 bg-purple-500 text-white">手書き</button>
+                        <button id="toolEraser" data-tool="eraser" onclick="setDrawTool('eraser')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">消しゴム</button>
                     </div>
                     <div class="flex gap-1 flex-wrap mt-1">
-                        <button id="toolLine"    onclick="setDrawTool('line')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
-                        <button id="toolCircle"   onclick="setDrawTool('circle')"   class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">○</button>
-                        <button id="toolTriangle" onclick="setDrawTool('triangle')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">△</button>
-                        <button id="toolRect"     onclick="setDrawTool('rect')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">□</button>
-                        <button id="toolStar"     onclick="setDrawTool('star')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">★</button>
-                        <button id="toolText"     onclick="setDrawTool('text')"     class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">文字</button>
+                        <button id="toolLine" data-tool="line" onclick="setDrawTool('line')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">直線</button>
+                        <button id="toolCircle" data-tool="circle" onclick="setDrawTool('circle')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">○</button>
+                        <button id="toolTriangle" data-tool="triangle" onclick="setDrawTool('triangle')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">△</button>
+                        <button id="toolRect" data-tool="rect" onclick="setDrawTool('rect')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">□</button>
+                        <button id="toolStar" data-tool="star" onclick="setDrawTool('star')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">★</button>
+                        <button id="toolText" data-tool="text" onclick="setDrawTool('text')" class="draw-tool-btn flex-1 py-1 rounded text-xs font-bold border-2 border-gray-300 text-gray-600 bg-white">文字</button>
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-xs text-gray-600 mb-1">スタンプ</label>
+                        <div class="flex gap-1 flex-wrap">
+                            <button onclick="setStamp('maru')" class="stamp-btn flex-1 py-1 rounded text-xs font-bold border border-rose-300 text-rose-600 bg-white hover:bg-rose-50">丸</button>
+                            <button onclick="setStamp('hanamaru')" class="stamp-btn flex-1 py-1 rounded text-xs font-bold border border-rose-300 text-rose-600 bg-white hover:bg-rose-50">花丸</button>
+                            <button onclick="setStamp('check')" class="stamp-btn flex-1 py-1 rounded text-xs font-bold border border-emerald-300 text-emerald-600 bg-white hover:bg-emerald-50">チェック</button>
+                            <button onclick="setStamp('arrow')" class="stamp-btn flex-1 py-1 rounded text-xs font-bold border border-blue-300 text-blue-600 bg-white hover:bg-blue-50">矢印</button>
+                            <button onclick="setStamp('good')" class="stamp-btn flex-1 py-1 rounded text-xs font-bold border border-orange-300 text-orange-600 bg-white hover:bg-orange-50">がんばったね</button>
+                        </div>
                     </div>
                     <div id="textSizeRow" class="hidden mt-1">
                         <label class="block text-xs text-gray-600 mb-1">文字サイズ: <span id="textSizeDisplay">32</span>pt</label>
@@ -619,7 +633,36 @@
         </div>
     </div>
 
-    <div class="flex-1 overflow-auto bg-gray-500 print-area flex justify-center py-4 md:py-8">
+    <div class="flex-1 overflow-auto bg-gray-500 print-area flex flex-col items-center py-4 md:py-8">
+        <div id="floatingDrawingToolbar" class="hidden no-print sticky top-3 z-30 mb-4 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-xl backdrop-blur">
+            <div class="flex flex-wrap items-center justify-center gap-2">
+                <span class="text-xs font-bold text-gray-600">手書き</span>
+                <button data-tool="select" onclick="setDrawTool('select')" class="draw-tool-btn rounded border-2 border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50" title="選択/移動">選択</button>
+                <button data-tool="free" onclick="setDrawTool('free')" class="draw-tool-btn rounded border-2 border-purple-500 bg-purple-500 px-2 py-1 text-xs font-bold text-white" title="手書き">ペン</button>
+                <button data-tool="eraser" onclick="setDrawTool('eraser')" class="draw-tool-btn rounded border-2 border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50" title="消しゴム">消す</button>
+                <button data-tool="line" onclick="setDrawTool('line')" class="draw-tool-btn rounded border-2 border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50" title="直線">線</button>
+                <button data-tool="circle" onclick="setDrawTool('circle')" class="draw-tool-btn rounded border-2 border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50" title="円">○</button>
+                <button data-tool="rect" onclick="setDrawTool('rect')" class="draw-tool-btn rounded border-2 border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50" title="四角">□</button>
+                <button data-tool="text" onclick="setDrawTool('text')" class="draw-tool-btn rounded border-2 border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50" title="文字">文字</button>
+                <span class="mx-1 h-6 w-px bg-gray-200"></span>
+                <button onclick="setStamp('maru')" class="stamp-btn rounded border border-rose-300 bg-white px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50" title="丸スタンプ">丸</button>
+                <button onclick="setStamp('hanamaru')" class="stamp-btn rounded border border-rose-300 bg-white px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50" title="花丸スタンプ">花丸</button>
+                <button onclick="setStamp('check')" class="stamp-btn rounded border border-emerald-300 bg-white px-2 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-50" title="チェックスタンプ">✓</button>
+                <button onclick="setStamp('arrow')" class="stamp-btn rounded border border-blue-300 bg-white px-2 py-1 text-xs font-bold text-blue-600 hover:bg-blue-50" title="矢印スタンプ">→</button>
+                <button onclick="setStamp('good')" class="stamp-btn rounded border border-orange-300 bg-white px-2 py-1 text-xs font-bold text-orange-600 hover:bg-orange-50" title="がんばったねスタンプ">がんばったね</button>
+                <span class="mx-1 h-6 w-px bg-gray-200"></span>
+                <button onclick="setDrawColor('#ef4444', event)" class="draw-color-btn h-7 w-7 rounded-full border-2 border-gray-300" style="background:#ef4444" title="赤"></button>
+                <button onclick="setDrawColor('#3b82f6', event)" class="draw-color-btn h-7 w-7 rounded-full border-2 border-gray-300" style="background:#3b82f6" title="青"></button>
+                <button onclick="setDrawColor('#22c55e', event)" class="draw-color-btn h-7 w-7 rounded-full border-2 border-gray-300" style="background:#22c55e" title="緑"></button>
+                <button onclick="setDrawColor('#000000', event)" class="draw-color-btn h-7 w-7 rounded-full border-2 border-gray-300" style="background:#000000" title="黒"></button>
+                <label class="ml-1 flex items-center gap-1 text-xs font-bold text-gray-600">
+                    太さ
+                    <input type="range" id="toolbarStrokeWidth" min="1" max="20" value="3" class="w-20" oninput="syncStrokeWidth(this.value)">
+                </label>
+                <button onclick="undoDrawing()" class="rounded border border-blue-300 bg-white px-2 py-1 text-xs font-bold text-blue-600 hover:bg-blue-50">戻る</button>
+                <button onclick="deleteSelectedElement()" class="rounded border border-orange-300 bg-white px-2 py-1 text-xs font-bold text-orange-600 hover:bg-orange-50">削除</button>
+            </div>
+        </div>
         <div id="scaleWrapper" style="transform-origin: top center; display: flex; flex-direction: column; align-items: center;">
         </div>
     </div>
@@ -635,7 +678,8 @@
             fontSizeDisplay: document.getElementById('fontSizeDisplay'),
             showHeader: document.getElementById('showHeader'),
             templateSelect: document.getElementById('templateSelect'),
-            scaleWrapper: document.getElementById('scaleWrapper')
+            scaleWrapper: document.getElementById('scaleWrapper'),
+            directCellInput: document.getElementById('directCellInput')
         };
 
         const TEMPLATES = {
@@ -673,6 +717,9 @@
                     if (state.enableHighlight !== undefined && document.getElementById('enableHighlight')) {
                         document.getElementById('enableHighlight').checked = state.enableHighlight;
                     }
+                    if (state.directCellInput !== undefined && elements.directCellInput) {
+                        elements.directCellInput.checked = state.directCellInput;
+                    }
                 } catch (e) {
                     console.error("ストレージ読み込みエラー:", e);
                 }
@@ -690,7 +737,8 @@
                 showHeader: elements.showHeader.checked,
                 templateSelect: elements.templateSelect.value,
                 fontSizeRatio: elements.fontSizeRatio.value,
-                enableHighlight: document.getElementById('enableHighlight') ? document.getElementById('enableHighlight').checked : true
+                enableHighlight: document.getElementById('enableHighlight') ? document.getElementById('enableHighlight').checked : true,
+                directCellInput: elements.directCellInput ? elements.directCellInput.checked : true
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         }
@@ -1467,7 +1515,7 @@
             elements.input.focus();
             
             if (token.char && token.char.length > 0 && token.sourceIndex >= 0) {
-                setCaretAtSourceIndex(token.sourceIndex + token.char.length);
+                setCaretAtSourceIndex(token.sourceIndex);
                 for (let i = 0; i < token.char.length; i++) {
                     document.execCommand('delete', false, null);
                 }
@@ -1519,8 +1567,13 @@
         function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
-            cellDiv.contentEditable = "true";
+            const directInputEnabled = !elements.directCellInput || elements.directCellInput.checked;
+            cellDiv.contentEditable = directInputEnabled ? "true" : "false";
             cellDiv.spellcheck = false;
+            cellDiv.title = directInputEnabled ? 'クリックしてこのマスに入力' : '';
+            if (directInputEnabled) {
+                cellDiv.classList.add('cursor-text');
+            }
 
             if (token.sourceIndex >= 0) {
                 cellDiv.dataset.sourceIndex = token.sourceIndex;
@@ -1552,6 +1605,23 @@
             }
 
             let cellIsComposing = false;
+
+            cellDiv.addEventListener('focus', () => {
+                if (!directInputEnabled) return;
+                const range = document.createRange();
+                range.selectNodeContents(cellDiv);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            });
+
+            cellDiv.addEventListener('paste', (e) => {
+                if (!directInputEnabled) return;
+                e.preventDefault();
+                const text = (e.clipboardData || window.clipboardData).getData('text');
+                if (!text) return;
+                processCellSync(cellDiv, token, text.replace(/\r\n?/g, '\n'));
+            });
             
             cellDiv.addEventListener('compositionstart', () => {
                 cellIsComposing = true;
@@ -1568,21 +1638,30 @@
             });
 
             cellDiv.addEventListener('keydown', (e) => {
-                if (e.key === 'Backspace' && cellDiv.textContent === '') {
+                if (!directInputEnabled) return;
+
+                if (e.key === 'Enter') {
                     e.preventDefault();
-                    if (token.sourceIndex > 0) {
-                        elements.input.focus();
-                        setCaretAtSourceIndex(token.sourceIndex);
-                        document.execCommand('delete', false, null);
-                        renderNotebookWithOverlay();
-                        setTimeout(() => {
-                            const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
-                            if (prevCell) prevCell.focus();
-                        }, 0);
+                    navigateCell(cellDiv, 'ArrowDown');
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
+                } else if (e.key === 'Backspace') {
+                    e.preventDefault();
+                    if (cellDiv.textContent !== '') {
+                        processCellSync(cellDiv, token, '');
+                    } else if (token.sourceIndex > 0) {
+                        const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
+                        if (prevCell) {
+                            prevCell.focus();
+                        }
                     }
                 } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     e.preventDefault();
                     navigateCell(cellDiv, e.key);
+                } else if (!cellIsComposing && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    processCellSync(cellDiv, token, e.key);
                 }
             });
 
@@ -1763,6 +1842,7 @@
         const drawing = {
             active: false,
             tool: 'free',
+            stampType: 'maru',
             color: '#1e3a8a',
             width: 3,
             textSize: 32,
@@ -1808,15 +1888,17 @@
             drawing.tool = tool;
             // 選択解除
             clearSelection();
+            document.querySelectorAll('.stamp-btn').forEach(b => {
+                b.classList.remove('ring-2', 'ring-purple-500', 'bg-purple-50');
+            });
             document.querySelectorAll('.draw-tool-btn').forEach(b => {
                 b.classList.remove('border-purple-500', 'bg-purple-500', 'text-white');
                 b.classList.add('border-gray-300', 'text-gray-600', 'bg-white');
             });
-            const active = document.getElementById('tool' + tool.charAt(0).toUpperCase() + tool.slice(1));
-            if (active) {
+            document.querySelectorAll(`.draw-tool-btn[data-tool="${tool}"]`).forEach(active => {
                 active.classList.remove('border-gray-300', 'text-gray-600', 'bg-white');
                 active.classList.add('border-purple-500', 'bg-purple-500', 'text-white');
-            }
+            });
             // カーソル更新
             const cursor = (tool === 'select' || tool === 'text') ? 'default' : 'crosshair';
             document.querySelectorAll('.drawing-overlay').forEach(svg => {
@@ -1826,27 +1908,55 @@
             document.getElementById('textSizeRow').classList.toggle('hidden', tool !== 'text');
         }
 
-        function setDrawColor(color) {
+        function setStamp(type) {
+            drawing.stampType = type;
+            setDrawTool('stamp');
+            document.querySelectorAll('.stamp-btn').forEach(b => {
+                b.classList.remove('ring-2', 'ring-purple-500', 'bg-purple-50');
+            });
+            const labels = {
+                maru: ['丸'],
+                hanamaru: ['花丸'],
+                check: ['チェック', '✓'],
+                arrow: ['矢印', '→'],
+                good: ['がんばったね']
+            };
+            document.querySelectorAll('.stamp-btn').forEach(b => {
+                if ((labels[type] || []).includes(b.textContent.trim())) {
+                    b.classList.add('ring-2', 'ring-purple-500', 'bg-purple-50');
+                }
+            });
+        }
+
+        function setDrawColor(color, e) {
             drawing.color = color;
-            document.querySelectorAll('#drawingTools .w-6').forEach(b => {
+            document.querySelectorAll('#drawingTools .w-6, .draw-color-btn').forEach(b => {
                 b.style.borderColor = '';
                 b.classList.remove('border-gray-800');
                 b.classList.add('border-gray-300');
             });
-            event.currentTarget.style.borderColor = '#1e3a8a';
+            const target = e?.currentTarget || window.event?.currentTarget;
+            if (target) target.style.borderColor = '#1e3a8a';
         }
 
-        document.getElementById('strokeWidth').addEventListener('input', e => {
-            drawing.width = parseInt(e.target.value);
-        });
+        function syncStrokeWidth(value) {
+            drawing.width = parseInt(value);
+            document.getElementById('strokeWidth').value = value;
+            document.getElementById('strokeWidthDisplay').textContent = value;
+            const toolbarWidth = document.getElementById('toolbarStrokeWidth');
+            if (toolbarWidth) toolbarWidth.value = value;
+        }
+
+        document.getElementById('strokeWidth').addEventListener('input', e => syncStrokeWidth(e.target.value));
 
         document.getElementById('drawingMode').addEventListener('change', e => {
             drawing.active = e.target.checked;
             document.getElementById('drawingTools').classList.toggle('hidden', !drawing.active);
+            document.getElementById('floatingDrawingToolbar').classList.toggle('hidden', !drawing.active);
             // SVGオーバーレイのpointer-eventsを切り替え
             document.querySelectorAll('.drawing-overlay').forEach(svg => {
                 svg.style.pointerEvents = drawing.active ? 'all' : 'none';
-                svg.style.cursor = drawing.active ? 'crosshair' : 'default';
+                svg.style.cursor = drawing.active && drawing.tool !== 'select' && drawing.tool !== 'text' ? 'crosshair' : 'default';
             });
         });
 
@@ -1906,6 +2016,16 @@
                 if (drawing.tool === 'text') {
                     drawing.isDrawing = false;
                     showTextInput(svg, pos, e);
+                    return;
+                }
+
+                if (drawing.tool === 'stamp') {
+                    drawing.isDrawing = false;
+                    const stamp = createStamp(svg, pos, drawing.stampType);
+                    if (stamp) {
+                        svg.appendChild(stamp);
+                        pushUndo({ type: 'add', el: stamp });
+                    }
                     return;
                 }
 
@@ -2213,6 +2333,97 @@
             textarea.addEventListener('blur', commit);
         }
 
+        function addSvgText(parent, text, x, y, options = {}) {
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            t.setAttribute('x', x);
+            t.setAttribute('y', y);
+            t.setAttribute('fill', options.fill || drawing.color);
+            t.setAttribute('font-size', options.size || 28);
+            t.setAttribute('font-family', options.family || 'sans-serif');
+            t.setAttribute('font-weight', options.weight || 'bold');
+            t.setAttribute('text-anchor', options.anchor || 'middle');
+            t.setAttribute('dominant-baseline', options.baseline || 'middle');
+            if (options.rotate) t.setAttribute('transform', `rotate(${options.rotate} ${x} ${y})`);
+            t.textContent = text;
+            parent.appendChild(t);
+            return t;
+        }
+
+        function createStamp(svg, pos, type) {
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('data-tx', '0');
+            g.setAttribute('data-ty', '0');
+            g.setAttribute('data-stamp', type);
+
+            const color = drawing.color || '#ef4444';
+            const strokeW = Math.max(2, drawing.width);
+
+            if (type === 'maru') {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', pos.x);
+                circle.setAttribute('cy', pos.y);
+                circle.setAttribute('r', 22);
+                circle.setAttribute('fill', 'none');
+                circle.setAttribute('stroke', color);
+                circle.setAttribute('stroke-width', strokeW);
+                g.appendChild(circle);
+            } else if (type === 'hanamaru') {
+                for (let i = 0; i < 12; i++) {
+                    const angle = (i * Math.PI * 2) / 12;
+                    const petal = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+                    petal.setAttribute('cx', pos.x + Math.cos(angle) * 22);
+                    petal.setAttribute('cy', pos.y + Math.sin(angle) * 22);
+                    petal.setAttribute('rx', 8);
+                    petal.setAttribute('ry', 14);
+                    petal.setAttribute('fill', 'none');
+                    petal.setAttribute('stroke', color);
+                    petal.setAttribute('stroke-width', Math.max(1.5, strokeW - 1));
+                    petal.setAttribute('transform', `rotate(${angle * 180 / Math.PI} ${pos.x + Math.cos(angle) * 22} ${pos.y + Math.sin(angle) * 22})`);
+                    g.appendChild(petal);
+                }
+                const inner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                inner.setAttribute('cx', pos.x);
+                inner.setAttribute('cy', pos.y);
+                inner.setAttribute('r', 16);
+                inner.setAttribute('fill', 'none');
+                inner.setAttribute('stroke', color);
+                inner.setAttribute('stroke-width', strokeW);
+                g.appendChild(inner);
+            } else if (type === 'check') {
+                const check = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                check.setAttribute('d', `M ${pos.x - 22} ${pos.y} L ${pos.x - 7} ${pos.y + 16} L ${pos.x + 24} ${pos.y - 18}`);
+                check.setAttribute('fill', 'none');
+                check.setAttribute('stroke', color);
+                check.setAttribute('stroke-width', Math.max(5, strokeW + 2));
+                check.setAttribute('stroke-linecap', 'round');
+                check.setAttribute('stroke-linejoin', 'round');
+                g.appendChild(check);
+            } else if (type === 'arrow') {
+                const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                arrow.setAttribute('d', `M ${pos.x - 30} ${pos.y} H ${pos.x + 24} M ${pos.x + 8} ${pos.y - 14} L ${pos.x + 24} ${pos.y} L ${pos.x + 8} ${pos.y + 14}`);
+                arrow.setAttribute('fill', 'none');
+                arrow.setAttribute('stroke', color);
+                arrow.setAttribute('stroke-width', Math.max(4, strokeW + 1));
+                arrow.setAttribute('stroke-linecap', 'round');
+                arrow.setAttribute('stroke-linejoin', 'round');
+                g.appendChild(arrow);
+            } else if (type === 'good') {
+                const frame = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                frame.setAttribute('x', pos.x - 64);
+                frame.setAttribute('y', pos.y - 18);
+                frame.setAttribute('width', 128);
+                frame.setAttribute('height', 36);
+                frame.setAttribute('rx', 18);
+                frame.setAttribute('fill', 'rgba(255,255,255,0.72)');
+                frame.setAttribute('stroke', color);
+                frame.setAttribute('stroke-width', Math.max(2, strokeW));
+                g.appendChild(frame);
+                addSvgText(g, 'がんばったね', pos.x, pos.y + 1, { fill: color, size: 18, weight: 'bold' });
+            }
+
+            return g;
+        }
+
         function addDrawingOverlay(paperDiv) {
             // A4サイズ（縦297mm×210mm, or横）をpx換算してviewBoxに設定
             const isLandscape = paperDiv.classList.contains('a4-landscape');
@@ -2322,10 +2533,10 @@
             if (enableHighlightBtn && !enableHighlightBtn.checked) return;
 
             let pos = getCaretCharacterOffsetWithin(elements.input);
-            let target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"]`);
+            let target = document.querySelector(`.cell[data-source-index="${pos}"], .np-cell[data-source-index="${pos}"], .math22-cell[data-source-index="${pos}"]`);
             if (!target && pos > 0) {
                 for (let i = pos - 1; i >= 0; i--) {
-                    target = document.querySelector(`.cell[data-source-index="${i}"], .np-cell[data-source-index="${i}"]`);
+                    target = document.querySelector(`.cell[data-source-index="${i}"], .np-cell[data-source-index="${i}"], .math22-cell[data-source-index="${i}"]`);
                     if (target) break;
                 }
             }
@@ -2352,6 +2563,12 @@
             document.getElementById('enableHighlight').addEventListener('change', () => {
                 saveState();
                 updateCursorHighlight();
+            });
+        }
+        if (elements.directCellInput) {
+            elements.directCellInput.addEventListener('change', () => {
+                saveState();
+                renderNotebookWithOverlay();
             });
         }
         
