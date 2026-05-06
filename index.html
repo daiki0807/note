@@ -1508,7 +1508,8 @@
             }
         }
 
-        function processCellSync(cellDiv, token, newText) {
+        function processCellSync(cellDiv, token, newText, options = {}) {
+            const { openNext = false, focusNext = true } = options;
             const zenText = toZenkaku(newText);
             if (zenText === (token.char || '')) return;
 
@@ -1560,13 +1561,18 @@
             
             setTimeout(() => {
                 const nextCell = document.querySelector(`[data-source-index="${nextIndex}"]`);
-                if (nextCell) nextCell.focus();
+                if (!nextCell || !focusNext) return;
+                nextCell.focus();
+                if (openNext && elements.directCellInput && elements.directCellInput.checked && nextCell._directToken) {
+                    openDirectCellEditor(nextCell, nextCell._directToken);
+                }
             }, 0);
         }
 
         function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
+            cellDiv._directToken = token;
             const directInputEnabled = !elements.directCellInput || elements.directCellInput.checked;
             cellDiv.contentEditable = "false";
             if (directInputEnabled) cellDiv.tabIndex = 0;
@@ -1605,10 +1611,6 @@
                 cellDiv.appendChild(span);
             }
 
-            cellDiv.addEventListener('focus', () => {
-                if (directInputEnabled) openDirectCellEditor(cellDiv, token);
-            });
-
             cellDiv.addEventListener('click', () => {
                 if (directInputEnabled) openDirectCellEditor(cellDiv, token);
             });
@@ -1618,14 +1620,16 @@
 
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    navigateCell(cellDiv, 'ArrowDown');
+                    const next = navigateCell(cellDiv, 'ArrowDown');
+                    if (next && next._directToken) openDirectCellEditor(next, next._directToken);
                 } else if (e.key === 'Tab') {
                     e.preventDefault();
-                    navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
+                    const next = navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
+                    if (next && next._directToken) openDirectCellEditor(next, next._directToken);
                 } else if (e.key === 'Backspace') {
                     e.preventDefault();
                     if (token.char) {
-                        processCellSync(cellDiv, token, '');
+                        processCellSync(cellDiv, token, '', { openNext: false });
                     } else if (token.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
                         if (prevCell) {
@@ -1682,11 +1686,17 @@
             let composing = false;
             let committed = false;
 
+            const closeEditor = () => {
+                try {
+                    if (input.parentNode) input.parentNode.removeChild(input);
+                } catch (e) {}
+            };
+
             const commit = (value) => {
                 if (committed) return;
                 committed = true;
-                input.remove();
-                processCellSync(cellDiv, token, value);
+                closeEditor();
+                processCellSync(cellDiv, token, value, { openNext: true });
             };
 
             input.addEventListener('compositionstart', () => {
@@ -1713,26 +1723,30 @@
                     e.preventDefault();
                     if (input.value) commit(input.value);
                     else {
-                        input.remove();
-                        navigateCell(cellDiv, 'ArrowDown');
+                        committed = true;
+                        closeEditor();
+                        const next = navigateCell(cellDiv, 'ArrowDown');
+                        if (next && next._directToken) openDirectCellEditor(next, next._directToken);
                     }
                 } else if (e.key === 'Tab') {
                     e.preventDefault();
                     if (input.value) commit(input.value);
                     else {
-                        input.remove();
-                        navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
+                        committed = true;
+                        closeEditor();
+                        const next = navigateCell(cellDiv, e.shiftKey ? 'ArrowLeft' : 'ArrowRight');
+                        if (next && next._directToken) openDirectCellEditor(next, next._directToken);
                     }
                 } else if (e.key === 'Escape') {
                     e.preventDefault();
                     committed = true;
-                    input.remove();
+                    closeEditor();
                 } else if (e.key === 'Backspace' && !input.value) {
                     e.preventDefault();
                     committed = true;
-                    input.remove();
+                    closeEditor();
                     if (token.char) {
-                        processCellSync(cellDiv, token, '');
+                        processCellSync(cellDiv, token, '', { openNext: false });
                     } else if (token.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${token.sourceIndex - 1}"]`);
                         if (prevCell) prevCell.focus();
@@ -1740,8 +1754,9 @@
                 } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key) && !input.value) {
                     e.preventDefault();
                     committed = true;
-                    input.remove();
-                    navigateCell(cellDiv, e.key);
+                    closeEditor();
+                    const next = navigateCell(cellDiv, e.key);
+                    if (next && next._directToken) openDirectCellEditor(next, next._directToken);
                 }
             });
 
@@ -1749,7 +1764,7 @@
                 if (!committed) {
                     const value = input.value;
                     committed = true;
-                    input.remove();
+                    closeEditor();
                     if (value) processCellSync(cellDiv, token, value);
                 }
             });
@@ -1799,6 +1814,7 @@
             if (bestCell) {
                 bestCell.focus();
             }
+            return bestCell;
         }
 
 
@@ -1852,10 +1868,12 @@
         function getFlatTokens(editor) {
             const lines = getTokensFromEditor(editor);
             const flat = [];
-            for (const line of lines) {
+            lines.forEach((line, lineIndex) => {
                 for (const t of line) flat.push(t);
-                flat.push({ char: '\n', sourceIndex: -1 }); // 改行用
-            }
+                if (lineIndex < lines.length - 1) {
+                    flat.push({ char: '\n', sourceIndex: -1 }); // 改行用
+                }
+            });
             return flat;
         }
 
