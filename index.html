@@ -1597,6 +1597,64 @@
             };
         }
 
+        function getCellLogicalPosition(cellDiv) {
+            const line = Number.parseInt(cellDiv.dataset.logicalLine, 10);
+            const char = Number.parseInt(cellDiv.dataset.logicalChar, 10);
+            if (!Number.isFinite(line) || !Number.isFinite(char)) return null;
+            return { line, char };
+        }
+
+        function findCellByLogicalPosition(line, char) {
+            return document.querySelector(`.cell[data-logical-line="${line}"][data-logical-char="${char}"], .np-cell[data-logical-line="${line}"][data-logical-char="${char}"], .math22-cell[data-logical-line="${line}"][data-logical-char="${char}"]`);
+        }
+
+        function findNextLogicalCell(line, char) {
+            let next = findCellByLogicalPosition(line, char);
+            if (next) return next;
+            return findCellByLogicalPosition(line + 1, 0);
+        }
+
+        function setPlainEditorText(text) {
+            elements.input.textContent = text;
+        }
+
+        function processDirectCellInput(cellDiv, token, newText, options = {}) {
+            const { openNext = false, focusNext = true } = options;
+            const pos = getCellLogicalPosition(cellDiv);
+            if (!pos) {
+                processCellSync(cellDiv, getLiveCellToken(cellDiv, token), newText, options);
+                return;
+            }
+
+            const zenText = toZenkaku(newText);
+            const liveText = cellDiv.textContent || '';
+            if (zenText === liveText) return;
+
+            const text = (elements.input.textContent || '').replace(/\r\n|\r/g, '\n');
+            const lines = text.split('\n');
+            while (lines.length <= pos.line) lines.push('');
+
+            const chars = Array.from(lines[pos.line] || '');
+            while (chars.length < pos.char) chars.push('　');
+
+            const replaceLen = Math.max(zenText ? 0 : 1, Array.from(liveText).length);
+            chars.splice(pos.char, replaceLen, ...Array.from(zenText));
+            lines[pos.line] = chars.join('');
+
+            setPlainEditorText(lines.join('\n'));
+            renderNotebookWithOverlay();
+
+            const nextChar = pos.char + Math.max(1, Array.from(zenText).length);
+            setTimeout(() => {
+                const nextCell = findNextLogicalCell(pos.line, nextChar);
+                if (!nextCell || !focusNext) return;
+                nextCell.focus();
+                if (openNext && elements.directCellInput && elements.directCellInput.checked && nextCell._directToken) {
+                    openDirectCellEditor(nextCell, nextCell._directToken);
+                }
+            }, 0);
+        }
+
         function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
@@ -1658,7 +1716,7 @@
                     e.preventDefault();
                     const liveToken = getLiveCellToken(cellDiv, token);
                     if (liveToken.char) {
-                        processCellSync(cellDiv, liveToken, '', { openNext: false });
+                        processDirectCellInput(cellDiv, liveToken, '', { openNext: false });
                     } else if (liveToken.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${liveToken.sourceIndex - 1}"]`);
                         if (prevCell) {
@@ -1696,6 +1754,7 @@
                 width: ${rect.width}px;
                 height: ${rect.height}px;
                 z-index: 9999;
+                pointer-events: none;
                 padding: 0;
                 margin: 0;
                 border: 2px solid #3b82f6;
@@ -1725,7 +1784,7 @@
                 if (committed) return;
                 committed = true;
                 closeEditor();
-                processCellSync(cellDiv, getLiveCellToken(cellDiv, token), value, { openNext: true });
+                processDirectCellInput(cellDiv, getLiveCellToken(cellDiv, token), value, { openNext: true });
             };
 
             input.addEventListener('compositionstart', () => {
@@ -1776,7 +1835,7 @@
                     closeEditor();
                     const liveToken = getLiveCellToken(cellDiv, token);
                     if (liveToken.char) {
-                        processCellSync(cellDiv, liveToken, '', { openNext: false });
+                        processDirectCellInput(cellDiv, liveToken, '', { openNext: false });
                     } else if (liveToken.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${liveToken.sourceIndex - 1}"]`);
                         if (prevCell) prevCell.focus();
@@ -1795,13 +1854,24 @@
                     const value = input.value;
                     committed = true;
                     closeEditor();
-                    if (value) processCellSync(cellDiv, token, value);
+                    if (value) processDirectCellInput(cellDiv, getLiveCellToken(cellDiv, token), value);
                 }
             });
 
             input.focus();
             if (initialText) commit(initialText);
         }
+
+        document.addEventListener('pointerdown', (e) => {
+            const targetCell = e.target.closest?.('.cell, .np-cell, .math22-cell');
+            const existing = document.getElementById('direct-cell-editor');
+            if (!targetCell || !existing || existing.contains(e.target)) return;
+            if (!existing.value) {
+                try {
+                    if (existing.parentNode) existing.parentNode.removeChild(existing);
+                } catch (err) {}
+            }
+        }, true);
 
         function navigateCell(currentCell, key) {
             const rect = currentCell.getBoundingClientRect();
