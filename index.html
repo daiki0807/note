@@ -6,6 +6,9 @@
     <title>ノート見本作成ツール</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --font-kyokasho: "UD Digi Kyokasho N-R", "UD Digi Kyokasho N-B", "Klee One", "BIZ UDPMincho", "Yu Mincho", serif;
@@ -135,6 +138,50 @@
         .cell-content {
             z-index: 10;
             pointer-events: none; /* セル自体をクリックしやすくするため */
+        }
+
+        /* 英語 4線ノート */
+        .english-grid {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            font-family: "Andika", "Century Gothic", "Trebuchet MS", "Helvetica Neue", Arial, sans-serif;
+        }
+        .english-row {
+            position: relative;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .english-row .eng-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 1px solid #94a3b8;
+        }
+        .english-row .eng-line-1 { top: 0; }
+        .english-row .eng-line-2 { top: 33.333%; border-top-style: dashed; border-top-color: #cbd5e1; }
+        .english-row .eng-line-3 { top: 66.666%; border-top: 1.6px solid #1f2937; }
+        .english-row .eng-line-4 { top: 100%; transform: translateY(-1px); }
+        .english-row .english-text {
+            position: absolute;
+            left: 4px;
+            right: 4px;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            align-items: flex-end;
+            line-height: 1;
+            white-space: pre;
+            overflow: visible;
+            color: #111827;
+            z-index: 5;
+            cursor: text;
+            box-sizing: border-box;
+        }
+        .english-row .english-text:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: 2px;
+            background-color: rgba(59,130,246,0.05);
         }
 
         /* 編集中のセル */
@@ -508,6 +555,7 @@
                 <option value="square-12">12mm方眼</option>
                 <option value="genko-400">原稿用紙 400字（縦書き）</option>
                 <option value="math-number-1">算数 数字練習 1〜10（1年生）</option>
+                <option value="english-4line">英語 4線ノート（横書き）</option>
             </select>
 
             <label class="block text-sm font-medium text-gray-700 mb-1">文字の向き</label>
@@ -689,7 +737,8 @@
             'math-22': { isMath22: true },
             'square-12': { cols: 15, rows: 22, dir: 'horizontal', style: 'style-grid-gray' },
             'genko-400': { cols: 20, rows: 20, dir: 'vertical', style: 'style-genko', isGenko: true },
-            'math-number-1': { isNumberPractice: true }
+            'math-number-1': { isNumberPractice: true },
+            'english-4line': { isEnglish4Line: true }
         };
 
         const STORAGE_KEY = 'notebookToolState';
@@ -747,7 +796,7 @@
         loadState();
 
         function isSpecialTemplate(tid) {
-            return !!(TEMPLATES[tid]?.isGenko || TEMPLATES[tid]?.isNumberPractice || TEMPLATES[tid]?.isMath17 || TEMPLATES[tid]?.isMath22);
+            return !!(TEMPLATES[tid]?.isGenko || TEMPLATES[tid]?.isNumberPractice || TEMPLATES[tid]?.isMath17 || TEMPLATES[tid]?.isMath22 || TEMPLATES[tid]?.isEnglish4Line);
         }
 
         // 専用テンプレートの場合、コントロールを無効化
@@ -791,6 +840,11 @@
             }
             if (TEMPLATES[templateId]?.isMath22) {
                 renderMath22(parsedLines, fontRatio);
+                saveState();
+                return;
+            }
+            if (TEMPLATES[templateId]?.isEnglish4Line) {
+                renderEnglish4Line(parsedLines, fontRatio);
                 saveState();
                 return;
             }
@@ -1063,6 +1117,104 @@
                 elements.scaleWrapper.appendChild(paperDiv);
             }
             setTimeout(adjustScale, 10);
+        }
+
+        function renderEnglish4Line(parsedLines, fontRatio) {
+            const PAD_H = 12, PAD_V = 15;
+            const HEADER_H_MM = 18;
+            const ROW_H_MM = 12;
+            const ROW_GAP_MM = 4;
+            const AVAIL_H = 297 - PAD_H * 2 - HEADER_H_MM;
+            const ROWS = Math.max(1, Math.floor((AVAIL_H + ROW_GAP_MM) / (ROW_H_MM + ROW_GAP_MM)));
+
+            document.getElementById('printPageStyle').textContent =
+                '@media print { @page { size: A4 portrait; margin: 0; } }';
+
+            // 入力欄の各行を1ノート行に対応させる
+            const lineTexts = parsedLines.map(tokens => tokens.map(t => t.char).join(''));
+
+            const buildPage = (startIdx) => {
+                const paperDiv = document.createElement('div');
+                paperDiv.className = 'a4-paper';
+                paperDiv.style.padding = `${PAD_H}mm ${PAD_V}mm`;
+                paperDiv.style.justifyContent = 'flex-start';
+                paperDiv.style.alignItems = 'stretch';
+
+                const includeHeader = elements.showHeader.checked;
+                if (includeHeader) {
+                    const header = document.createElement('div');
+                    header.className = 'notebook-header';
+                    header.style.height = `${HEADER_H_MM}mm`;
+                    header.style.marginBottom = '4mm';
+                    header.innerHTML = `
+                        <div class="header-item header-date"><span class="header-label">Date</span><div class="header-line" style="flex-grow:1;"></div></div>
+                        <div class="header-item header-title"><span class="header-label">Title</span><div class="header-line" style="flex-grow:1;"></div></div>
+                        <div class="header-item header-name"><span class="header-label">Name</span><div class="header-line" style="flex-grow:1;"></div></div>
+                    `;
+                    paperDiv.appendChild(header);
+                }
+
+                const grid = document.createElement('div');
+                grid.className = 'english-grid';
+
+                const baseFontMM = ROW_H_MM * 0.93 * fontRatio;
+                const baseFontPx = baseFontMM * 3.7795;
+                const padBottomMM = Math.max(0, (ROW_H_MM / 3) - baseFontMM * 0.20);
+
+                for (let r = 0; r < ROWS; r++) {
+                    const row = document.createElement('div');
+                    row.className = 'english-row';
+                    row.style.height = `${ROW_H_MM}mm`;
+                    row.style.marginBottom = (r === ROWS - 1) ? '0' : `${ROW_GAP_MM}mm`;
+                    for (let i = 1; i <= 4; i++) {
+                        const ln = document.createElement('div');
+                        ln.className = `eng-line eng-line-${i}`;
+                        row.appendChild(ln);
+                    }
+                    const text = document.createElement('div');
+                    text.className = 'english-text';
+                    text.contentEditable = 'true';
+                    text.spellcheck = false;
+                    text.style.fontSize = `${baseFontPx}px`;
+                    text.style.paddingBottom = `${padBottomMM}mm`;
+                    const globalRow = startIdx + r;
+                    text.dataset.englishRow = globalRow;
+                    if (lineTexts[globalRow] != null) {
+                        text.textContent = lineTexts[globalRow];
+                    }
+                    text.addEventListener('input', () => {
+                        syncEnglishRowsToInput();
+                    });
+                    text.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const all = Array.from(document.querySelectorAll('.english-text'));
+                            const idx = all.indexOf(text);
+                            if (all[idx + 1]) all[idx + 1].focus();
+                        }
+                    });
+                    row.appendChild(text);
+                    grid.appendChild(row);
+                }
+                paperDiv.appendChild(grid);
+                elements.scaleWrapper.appendChild(paperDiv);
+            };
+
+            const totalRowsNeeded = Math.max(ROWS, lineTexts.length || 1);
+            const pages = Math.max(1, Math.ceil(totalRowsNeeded / ROWS));
+            for (let p = 0; p < pages; p++) buildPage(p * ROWS);
+
+            setTimeout(adjustScale, 10);
+        }
+
+        function syncEnglishRowsToInput() {
+            const texts = Array.from(document.querySelectorAll('.english-text'));
+            // 末尾の空行はトリム
+            let last = texts.length - 1;
+            while (last >= 0 && !texts[last].textContent) last--;
+            const lines = texts.slice(0, last + 1).map(el => el.textContent || '');
+            elements.input.innerText = lines.join('\n');
+            saveState();
         }
 
         function renderMath22(parsedLines, fontRatio) {
