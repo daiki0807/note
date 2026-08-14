@@ -762,6 +762,11 @@
         })();
 
         function renderNotebook() {
+            // 再描画でマスが作り直されると、開いたままのマス編集ボックスが持つ
+            // cellDiv参照が無効になり、後のcommitで無関係な位置を書き換えてしまうため破棄する
+            const staleEditor = document.getElementById('direct-cell-editor');
+            if (staleEditor) staleEditor.remove();
+
             const parsedLines = getTokensFromEditor(elements.input);
             const fontRatio = parseInt(elements.fontSizeRatio.value) / 100;
 
@@ -1081,36 +1086,6 @@
             document.getElementById('printPageStyle').textContent =
                 '@media print { @page { size: A4 portrait; margin: 0; } }';
 
-            const paperDiv = document.createElement('div');
-            paperDiv.className = 'a4-paper';
-            paperDiv.style.padding = `${PAD_H}mm ${sidePadMM}mm`;
-            paperDiv.style.justifyContent = 'flex-start';
-            paperDiv.style.alignItems = 'flex-start';
-
-            const container = document.createElement('div');
-            container.style.width = '100%';
-            container.style.display = 'flex';
-            container.style.flexDirection = 'column';
-
-            const topHeader = document.createElement('div');
-            topHeader.className = 'number-practice-top-header';
-            topHeader.style.height = `${HEADER_H_MM}mm`;
-            topHeader.style.marginBottom = '2mm';
-            topHeader.innerHTML = `
-                <div class="number-practice-name-line"></div>
-                <div class="number-practice-date-area">
-                    <div class="number-practice-date-item"><span>月</span><span class="number-practice-date-line" style="width:10mm;"></span></div>
-                    <div class="number-practice-date-item"><span>日</span><span class="number-practice-date-line" style="width:10mm;"></span></div>
-                    <div class="number-practice-date-item"><span>曜日（</span><span class="number-practice-date-line" style="width:14mm;"></span><span>）</span></div>
-                </div>
-            `;
-            container.appendChild(topHeader);
-
-            const gridDiv = document.createElement('div');
-            gridDiv.style.display = 'grid';
-            gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${CELL_MM}mm)`;
-            gridDiv.style.gridTemplateRows = `repeat(${ROWS}, ${CELL_MM}mm)`;
-
             const gridData = [];
             let globalIndex = 0;
             for (const lineTokens of parsedLines) {
@@ -1129,28 +1104,63 @@
             }
 
             const fontSize = CELL_MM * 3.7795 * 0.7 * fontRatio;
-            for (let row = 0; row < ROWS; row++) {
-                const lineData = gridData[row] || [];
-                for (let col = 0; col < COLS; col++) {
-                    const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
-                    if (!lineData[col]) globalIndex++;
-                    const cellDiv = createCell(token, false, 'math22-cell');
-                    cellDiv.dataset.logicalLine = row;
-                    cellDiv.dataset.logicalChar = col;
-                    cellDiv.style.border = '1px solid #7dd3fc';
-                    cellDiv.style.boxSizing = 'border-box';
-                    cellDiv.style.height = `${CELL_MM}mm`;
-                    if (token.char) {
-                        const span = cellDiv.querySelector('.cell-content');
-                        if (span) span.style.fontSize = `${fontSize}px`;
-                    }
-                    gridDiv.appendChild(cellDiv);
-                }
-            }
+            const totalPages = Math.ceil(gridData.length / ROWS) || 1;
 
-            container.appendChild(gridDiv);
-            paperDiv.appendChild(container);
-            elements.scaleWrapper.appendChild(paperDiv);
+            for (let p = 0; p < totalPages; p++) {
+                const pageData = gridData.slice(p * ROWS, (p + 1) * ROWS);
+
+                const paperDiv = document.createElement('div');
+                paperDiv.className = 'a4-paper';
+                paperDiv.style.padding = `${PAD_H}mm ${sidePadMM}mm`;
+                paperDiv.style.justifyContent = 'flex-start';
+                paperDiv.style.alignItems = 'flex-start';
+
+                const container = document.createElement('div');
+                container.style.width = '100%';
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';
+
+                const topHeader = document.createElement('div');
+                topHeader.className = 'number-practice-top-header';
+                topHeader.style.height = `${HEADER_H_MM}mm`;
+                topHeader.style.marginBottom = '2mm';
+                topHeader.innerHTML = `
+                    <div class="number-practice-name-line"></div>
+                    <div class="number-practice-date-area">
+                        <div class="number-practice-date-item"><span>月</span><span class="number-practice-date-line" style="width:10mm;"></span></div>
+                        <div class="number-practice-date-item"><span>日</span><span class="number-practice-date-line" style="width:10mm;"></span></div>
+                        <div class="number-practice-date-item"><span>曜日（</span><span class="number-practice-date-line" style="width:14mm;"></span><span>）</span></div>
+                    </div>
+                `;
+                container.appendChild(topHeader);
+
+                const gridDiv = document.createElement('div');
+                gridDiv.style.display = 'grid';
+                gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${CELL_MM}mm)`;
+                gridDiv.style.gridTemplateRows = `repeat(${ROWS}, ${CELL_MM}mm)`;
+
+                for (let row = 0; row < ROWS; row++) {
+                    const lineData = pageData[row] || [];
+                    for (let col = 0; col < COLS; col++) {
+                        const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex++ };
+                        const cellDiv = createCell(token, false, 'math22-cell');
+                        cellDiv.dataset.logicalLine = p * ROWS + row;
+                        cellDiv.dataset.logicalChar = col;
+                        cellDiv.style.border = '1px solid #7dd3fc';
+                        cellDiv.style.boxSizing = 'border-box';
+                        cellDiv.style.height = `${CELL_MM}mm`;
+                        if (token.char) {
+                            const span = cellDiv.querySelector('.cell-content');
+                            if (span) span.style.fontSize = `${fontSize}px`;
+                        }
+                        gridDiv.appendChild(cellDiv);
+                    }
+                }
+
+                container.appendChild(gridDiv);
+                paperDiv.appendChild(container);
+                elements.scaleWrapper.appendChild(paperDiv);
+            }
             setTimeout(adjustScale, 10);
         }
 
@@ -1170,48 +1180,6 @@
             document.getElementById('printPageStyle').textContent =
                 '@media print { @page { size: A4 portrait; margin: 0; } }';
 
-            const paperDiv = document.createElement('div');
-            paperDiv.className = 'a4-paper';
-            paperDiv.style.padding = `${PAD_H}mm ${PAD_V}mm`;
-            paperDiv.style.justifyContent = 'flex-start';
-            paperDiv.style.alignItems = 'flex-start';
-
-            const container = document.createElement('div');
-            container.style.width = '100%';
-            container.style.display = 'flex';
-            container.style.flexDirection = 'column';
-
-            const topHeader = document.createElement('div');
-            topHeader.className = 'number-practice-top-header';
-            topHeader.style.height = `${HEADER_H_MM}mm`;
-            topHeader.style.marginBottom = '2mm';
-            topHeader.innerHTML = `
-                <div class="number-practice-name-line"></div>
-                <div class="number-practice-date-area">
-                    <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
-                    <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
-                    <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:16mm;"></span><span>）</span></div>
-                </div>
-            `;
-            container.appendChild(topHeader);
-
-            const gridDiv = document.createElement('div');
-            gridDiv.className = 'number-practice-grid';
-            gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellMM}mm)`;
-            gridDiv.style.gridTemplateRows = `repeat(${ROWS}, ${cellMM}mm)`;
-
-            const headerFontSize = cellPx * 0.65;
-            for (let col = 0; col < COLS; col++) {
-                const cellDiv = document.createElement('div');
-                cellDiv.className = 'np-cell';
-                const span = document.createElement('span');
-                span.className = 'np-digit';
-                span.style.fontSize = `${headerFontSize}px`;
-                span.textContent = HEADER_LABELS[col];
-                cellDiv.appendChild(span);
-                gridDiv.appendChild(cellDiv);
-            }
-
             const gridData = [];
             let globalIndex = 0;
             for (const lineTokens of parsedLines) {
@@ -1229,31 +1197,78 @@
                 globalIndex++;
             }
 
+            const headerFontSize = cellPx * 0.65;
             const practiceFontSize = cellPx * fontRatio;
             const PRACTICE_ROWS = ROWS - 1;
-            for (let row = 0; row < PRACTICE_ROWS; row++) {
-                const lineData = gridData[row] || [];
+            const totalPages = Math.ceil(gridData.length / PRACTICE_ROWS) || 1;
+
+            for (let p = 0; p < totalPages; p++) {
+                const pageData = gridData.slice(p * PRACTICE_ROWS, (p + 1) * PRACTICE_ROWS);
+
+                const paperDiv = document.createElement('div');
+                paperDiv.className = 'a4-paper';
+                paperDiv.style.padding = `${PAD_H}mm ${PAD_V}mm`;
+                paperDiv.style.justifyContent = 'flex-start';
+                paperDiv.style.alignItems = 'flex-start';
+
+                const container = document.createElement('div');
+                container.style.width = '100%';
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';
+
+                const topHeader = document.createElement('div');
+                topHeader.className = 'number-practice-top-header';
+                topHeader.style.height = `${HEADER_H_MM}mm`;
+                topHeader.style.marginBottom = '2mm';
+                topHeader.innerHTML = `
+                    <div class="number-practice-name-line"></div>
+                    <div class="number-practice-date-area">
+                        <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
+                        <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:12mm;"></span></div>
+                        <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:16mm;"></span><span>）</span></div>
+                    </div>
+                `;
+                container.appendChild(topHeader);
+
+                const gridDiv = document.createElement('div');
+                gridDiv.className = 'number-practice-grid';
+                gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellMM}mm)`;
+                gridDiv.style.gridTemplateRows = `repeat(${ROWS}, ${cellMM}mm)`;
+
                 for (let col = 0; col < COLS; col++) {
-                    const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
-                    if (!lineData[col]) globalIndex++;
-                    const cellDiv = createCell(token, false, 'np-cell practice-cell');
-                    cellDiv.dataset.logicalLine = row;
-                    cellDiv.dataset.logicalChar = col;
-                    if (token.char) {
-                        const span = cellDiv.querySelector('.cell-content');
-                        if (span) {
-                            span.style.fontSize = `${practiceFontSize}px`;
-                            span.style.fontFamily = 'var(--font-kyokasho)';
-                            span.style.zIndex = '1';
-                        }
-                    }
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = 'np-cell';
+                    const span = document.createElement('span');
+                    span.className = 'np-digit';
+                    span.style.fontSize = `${headerFontSize}px`;
+                    span.textContent = HEADER_LABELS[col];
+                    cellDiv.appendChild(span);
                     gridDiv.appendChild(cellDiv);
                 }
-            }
 
-            container.appendChild(gridDiv);
-            paperDiv.appendChild(container);
-            elements.scaleWrapper.appendChild(paperDiv);
+                for (let row = 0; row < PRACTICE_ROWS; row++) {
+                    const lineData = pageData[row] || [];
+                    for (let col = 0; col < COLS; col++) {
+                        const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex++ };
+                        const cellDiv = createCell(token, false, 'np-cell practice-cell');
+                        cellDiv.dataset.logicalLine = p * PRACTICE_ROWS + row;
+                        cellDiv.dataset.logicalChar = col;
+                        if (token.char) {
+                            const span = cellDiv.querySelector('.cell-content');
+                            if (span) {
+                                span.style.fontSize = `${practiceFontSize}px`;
+                                span.style.fontFamily = 'var(--font-kyokasho)';
+                                span.style.zIndex = '1';
+                            }
+                        }
+                        gridDiv.appendChild(cellDiv);
+                    }
+                }
+
+                container.appendChild(gridDiv);
+                paperDiv.appendChild(container);
+                elements.scaleWrapper.appendChild(paperDiv);
+            }
             setTimeout(adjustScale, 10);
         }
 
@@ -1275,45 +1290,6 @@
             document.getElementById('printPageStyle').textContent =
                 '@media print { @page { size: A4 landscape; margin: 0; } }';
 
-            const paperDiv = document.createElement('div');
-            paperDiv.className = 'a4-paper a4-landscape';
-            paperDiv.style.padding = `${PADDING_H_MM}mm ${PADDING_V_MM}mm`;
-            paperDiv.style.justifyContent = 'flex-start';
-            paperDiv.style.alignItems = 'flex-start';
-
-            const container = document.createElement('div');
-            container.className = 'number-practice-container';
-
-            const topHeader = document.createElement('div');
-            topHeader.className = 'number-practice-top-header';
-            topHeader.style.height = `${HEADER_H_MM}mm`;
-            topHeader.innerHTML = `
-                <div class="number-practice-name-line"></div>
-                <div class="number-practice-date-area">
-                    <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:14mm;"></span></div>
-                    <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:14mm;"></span></div>
-                    <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:18mm;"></span><span>）</span></div>
-                </div>
-            `;
-            container.appendChild(topHeader);
-
-            const gridDiv = document.createElement('div');
-            gridDiv.className = 'number-practice-grid';
-            gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellWMM}mm)`;
-            gridDiv.style.gridTemplateRows = `repeat(${TOTAL_ROWS}, ${cellHMM}mm)`;
-
-            for (let col = 0; col < COLS; col++) {
-                const num = (col + 1).toString();
-                const cellDiv = document.createElement('div');
-                cellDiv.className = 'np-cell';
-                const digitSpan = document.createElement('span');
-                digitSpan.className = 'np-digit';
-                digitSpan.style.fontSize = `${cellHPx * 0.72}px`;
-                digitSpan.textContent = num;
-                cellDiv.appendChild(digitSpan);
-                gridDiv.appendChild(cellDiv);
-            }
-
             const gridData = [];
             let globalIndex = 0;
             for (const lineTokens of parsedLines) {
@@ -1332,29 +1308,73 @@
             }
 
             const practiceFontSize = cellHPx * fontRatio;
-            for (let row = 0; row < PRACTICE_ROWS; row++) {
-                const lineData = gridData[row] || [];
+            const totalPages = Math.ceil(gridData.length / PRACTICE_ROWS) || 1;
+
+            for (let p = 0; p < totalPages; p++) {
+                const pageData = gridData.slice(p * PRACTICE_ROWS, (p + 1) * PRACTICE_ROWS);
+
+                const paperDiv = document.createElement('div');
+                paperDiv.className = 'a4-paper a4-landscape';
+                paperDiv.style.padding = `${PADDING_H_MM}mm ${PADDING_V_MM}mm`;
+                paperDiv.style.justifyContent = 'flex-start';
+                paperDiv.style.alignItems = 'flex-start';
+
+                const container = document.createElement('div');
+                container.className = 'number-practice-container';
+
+                const topHeader = document.createElement('div');
+                topHeader.className = 'number-practice-top-header';
+                topHeader.style.height = `${HEADER_H_MM}mm`;
+                topHeader.innerHTML = `
+                    <div class="number-practice-name-line"></div>
+                    <div class="number-practice-date-area">
+                        <div class="number-practice-date-item"><span>がつ</span><span class="number-practice-date-line" style="width:14mm;"></span></div>
+                        <div class="number-practice-date-item"><span>にち</span><span class="number-practice-date-line" style="width:14mm;"></span></div>
+                        <div class="number-practice-date-item"><span>ようび（</span><span class="number-practice-date-line" style="width:18mm;"></span><span>）</span></div>
+                    </div>
+                `;
+                container.appendChild(topHeader);
+
+                const gridDiv = document.createElement('div');
+                gridDiv.className = 'number-practice-grid';
+                gridDiv.style.gridTemplateColumns = `repeat(${COLS}, ${cellWMM}mm)`;
+                gridDiv.style.gridTemplateRows = `repeat(${TOTAL_ROWS}, ${cellHMM}mm)`;
+
                 for (let col = 0; col < COLS; col++) {
-                    const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex };
-                    if (!lineData[col]) globalIndex++;
-                    const cellDiv = createCell(token, false, 'np-cell practice-cell');
-                    cellDiv.dataset.logicalLine = row;
-                    cellDiv.dataset.logicalChar = col;
-                    if (token.char) {
-                        const span = cellDiv.querySelector('.cell-content');
-                        if (span) {
-                            span.style.fontSize = `${practiceFontSize}px`;
-                            span.style.fontFamily = 'var(--font-kyokasho)';
-                            span.style.zIndex = '1';
-                        }
-                    }
+                    const num = (col + 1).toString();
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = 'np-cell';
+                    const digitSpan = document.createElement('span');
+                    digitSpan.className = 'np-digit';
+                    digitSpan.style.fontSize = `${cellHPx * 0.72}px`;
+                    digitSpan.textContent = num;
+                    cellDiv.appendChild(digitSpan);
                     gridDiv.appendChild(cellDiv);
                 }
-            }
 
-            container.appendChild(gridDiv);
-            paperDiv.appendChild(container);
-            elements.scaleWrapper.appendChild(paperDiv);
+                for (let row = 0; row < PRACTICE_ROWS; row++) {
+                    const lineData = pageData[row] || [];
+                    for (let col = 0; col < COLS; col++) {
+                        const token = lineData[col] || { char: '', color: null, sourceIndex: globalIndex++ };
+                        const cellDiv = createCell(token, false, 'np-cell practice-cell');
+                        cellDiv.dataset.logicalLine = p * PRACTICE_ROWS + row;
+                        cellDiv.dataset.logicalChar = col;
+                        if (token.char) {
+                            const span = cellDiv.querySelector('.cell-content');
+                            if (span) {
+                                span.style.fontSize = `${practiceFontSize}px`;
+                                span.style.fontFamily = 'var(--font-kyokasho)';
+                                span.style.zIndex = '1';
+                            }
+                        }
+                        gridDiv.appendChild(cellDiv);
+                    }
+                }
+
+                container.appendChild(gridDiv);
+                paperDiv.appendChild(container);
+                elements.scaleWrapper.appendChild(paperDiv);
+            }
             setTimeout(adjustScale, 10);
         }
 
@@ -1536,7 +1556,7 @@
             if (token.char && token.char.length > 0 && token.sourceIndex >= 0) {
                 setCaretAtSourceIndex(token.sourceIndex);
                 for (let i = 0; i < token.char.length; i++) {
-                    document.execCommand('delete', false, null);
+                    document.execCommand('forwardDelete', false, null);
                 }
             } else if (token.sourceIndex >= 0 && token.sourceIndex < getFlatTokens(elements.input).length) {
                 setCaretAtSourceIndex(token.sourceIndex);
@@ -1597,64 +1617,6 @@
             };
         }
 
-        function getCellLogicalPosition(cellDiv) {
-            const line = Number.parseInt(cellDiv.dataset.logicalLine, 10);
-            const char = Number.parseInt(cellDiv.dataset.logicalChar, 10);
-            if (!Number.isFinite(line) || !Number.isFinite(char)) return null;
-            return { line, char };
-        }
-
-        function findCellByLogicalPosition(line, char) {
-            return document.querySelector(`.cell[data-logical-line="${line}"][data-logical-char="${char}"], .np-cell[data-logical-line="${line}"][data-logical-char="${char}"], .math22-cell[data-logical-line="${line}"][data-logical-char="${char}"]`);
-        }
-
-        function findNextLogicalCell(line, char) {
-            let next = findCellByLogicalPosition(line, char);
-            if (next) return next;
-            return findCellByLogicalPosition(line + 1, 0);
-        }
-
-        function setPlainEditorText(text) {
-            elements.input.textContent = text;
-        }
-
-        function processDirectCellInput(cellDiv, token, newText, options = {}) {
-            const { openNext = false, focusNext = true } = options;
-            const pos = getCellLogicalPosition(cellDiv);
-            if (!pos) {
-                processCellSync(cellDiv, getLiveCellToken(cellDiv, token), newText, options);
-                return;
-            }
-
-            const zenText = toZenkaku(newText);
-            const liveText = cellDiv.textContent || '';
-            if (zenText === liveText) return;
-
-            const text = (elements.input.textContent || '').replace(/\r\n|\r/g, '\n');
-            const lines = text.split('\n');
-            while (lines.length <= pos.line) lines.push('');
-
-            const chars = Array.from(lines[pos.line] || '');
-            while (chars.length < pos.char) chars.push('　');
-
-            const replaceLen = Math.max(zenText ? 0 : 1, Array.from(liveText).length);
-            chars.splice(pos.char, replaceLen, ...Array.from(zenText));
-            lines[pos.line] = chars.join('');
-
-            setPlainEditorText(lines.join('\n'));
-            renderNotebookWithOverlay();
-
-            const nextChar = pos.char + Math.max(1, Array.from(zenText).length);
-            setTimeout(() => {
-                const nextCell = findNextLogicalCell(pos.line, nextChar);
-                if (!nextCell || !focusNext) return;
-                nextCell.focus();
-                if (openNext && elements.directCellInput && elements.directCellInput.checked && nextCell._directToken) {
-                    openDirectCellEditor(nextCell, nextCell._directToken);
-                }
-            }, 0);
-        }
-
         function createCell(token, isVertical = false, className = 'cell') {
             const cellDiv = document.createElement('div');
             cellDiv.className = className;
@@ -1703,6 +1665,9 @@
 
             cellDiv.addEventListener('keydown', (e) => {
                 if (!directInputEnabled) return;
+                // IME変換中のキー入力は無視する（未確定の1文字を確定扱いで
+                // 次のマスへ進めてしまい、変換を継続できなくなるのを防ぐ）
+                if (e.isComposing || e.keyCode === 229) return;
 
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -1716,7 +1681,7 @@
                     e.preventDefault();
                     const liveToken = getLiveCellToken(cellDiv, token);
                     if (liveToken.char) {
-                        processDirectCellInput(cellDiv, liveToken, '', { openNext: false });
+                        processCellSync(cellDiv, liveToken, '', { openNext: false });
                     } else if (liveToken.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${liveToken.sourceIndex - 1}"]`);
                         if (prevCell) {
@@ -1784,7 +1749,7 @@
                 if (committed) return;
                 committed = true;
                 closeEditor();
-                processDirectCellInput(cellDiv, getLiveCellToken(cellDiv, token), value, { openNext: true });
+                processCellSync(cellDiv, getLiveCellToken(cellDiv, token), value, { openNext: true });
             };
 
             input.addEventListener('compositionstart', () => {
@@ -1835,7 +1800,7 @@
                     closeEditor();
                     const liveToken = getLiveCellToken(cellDiv, token);
                     if (liveToken.char) {
-                        processDirectCellInput(cellDiv, liveToken, '', { openNext: false });
+                        processCellSync(cellDiv, liveToken, '', { openNext: false });
                     } else if (liveToken.sourceIndex > 0) {
                         const prevCell = document.querySelector(`[data-source-index="${liveToken.sourceIndex - 1}"]`);
                         if (prevCell) prevCell.focus();
@@ -1854,7 +1819,7 @@
                     const value = input.value;
                     committed = true;
                     closeEditor();
-                    if (value) processDirectCellInput(cellDiv, getLiveCellToken(cellDiv, token), value);
+                    if (value) processCellSync(cellDiv, getLiveCellToken(cellDiv, token), value);
                 }
             });
 
@@ -2717,24 +2682,22 @@
             if (tpl?.isNumberPractice) return 10;
             if (tpl?.isMath17) return 12;
             if (tpl?.isMath22) return 12;
-            
-            const direction = Array.from(elements.direction).find(radio => radio.checked).value;
-            const colsCount = parseInt(elements.cols.value) || 10;
-            const rowsCount = parseInt(elements.rows.value) || 7;
-            return direction === 'horizontal' ? colsCount : rowsCount;
+
+            // 縦書き・横書きいずれも、1行の文字数を決めるのは「1行のマス数」(cols)。
+            // rows は改ページまでの行数であり、1行の容量ではない。
+            return parseInt(elements.cols.value) || 10;
         }
 
         function updateCharStatus() {
             const statusEl = document.getElementById('charCountStatus');
             if (!statusEl) return;
-            
-            // WYSIWYGでの行数・文字数取得（簡易版: プレーンテキストで計算）
-            const text = elements.input.innerText || "";
-            const lines = text.split(/\r\n|\r|\n/);
-            const logicalCharCount = lines[lines.length - 1].length;
-            const currentLineNumber = lines.length;
+
+            // 常に最終行ではなく、カーソルが今いる行・マス消費数を表示する
+            const caret = getCaretLogicalPosition(elements.input);
+            const currentLineNumber = caret.line + 1;
+            const logicalCharCount = caret.char;
             const maxChars = getMaxCharsPerLine();
-            
+
             statusEl.innerHTML = `現在: <strong>${currentLineNumber}</strong>行目 / <strong>${logicalCharCount}</strong>マス消費 (改行まで: 残り<strong>${Math.max(0, maxChars - logicalCharCount)}</strong>マス)`;
         }
 
